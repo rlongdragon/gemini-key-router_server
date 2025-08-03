@@ -1,0 +1,16 @@
+[
+  {
+    "id": "gemini-key-1",
+    "key": "AIzaSyDqnLJhsnIfeS2o5bb0tboR_4-j7ozm8as",
+    "group": "default",
+    "enabled": true,
+    "rpd": 15
+  },
+  {
+    "id": "gemini-key-2",
+    "key": "AIzaSyDtjEMYONqL8KMx2zfOzWPwJK1x725r-mM",
+    "group": "default",
+    "enabled": true,
+    "rpd": 15
+  }
+]

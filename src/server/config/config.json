@@ -1,0 +1,9 @@
+{
+  "database": {
+    "path": "data/gemini-router.sqlite",
+    "retentionDays": 30
+  },
+  "server": {
+    "port": 5000
+  }
+}
