@@ -40,15 +40,29 @@ export default class ProxyManager {
     try {
       const result = await apiKey.sendRequest(modelId, req.body, isStreaming);
       const latency = Date.now() - startTime;
+
+      // console.log(result);
+
+      let usageMetadata = result.usageMetadata || {};
+
+      if (isStreaming) {
+        const finalResponse = await result.response;
+        usageMetadata = finalResponse.usageMetadata;
+      } 
       
-      const { promptTokenCount, candidatesTokenCount, totalTokenCount } = result.response.usageMetadata || { promptTokenCount: null, candidatesTokenCount: null, totalTokenCount: null };
+      const { promptTokenCount, candidatesTokenCount, totalTokenCount } =
+        usageMetadata || {
+          promptTokenCount: null,
+          candidatesTokenCount: null,
+          totalTokenCount: null,
+        };
 
       keyStatusService.updateKeyStatus(apiKey.id, 'available');
-      const record = {
+      const record: UsageRecord = {
         requestId,
         apiKeyId: apiKey.id,
         keyGroupId: groupId,
-        clientIdentifier: req.ip,
+        clientIdentifier: req.ip || null,
         modelId,
         status: 'success',
         latency,
@@ -60,7 +74,7 @@ export default class ProxyManager {
         errorCode: null,
         errorMessage: null,
       };
-      await dbService.addUsageRecord(record as any);
+      await dbService.addUsageRecord(record);
 
       return result;
     } catch (error: any) {
@@ -70,11 +84,11 @@ export default class ProxyManager {
         keyStatusService.updateKeyStatus(apiKey.id, 'available');
       }
       const latency = Date.now() - startTime;
-      const record = {
+      const record: UsageRecord = {
         requestId,
         apiKeyId: apiKey.id,
         keyGroupId: groupId,
-        clientIdentifier: req.ip,
+        clientIdentifier: req.ip || null,
         modelId,
         status: 'failure',
         latency,
@@ -83,10 +97,10 @@ export default class ProxyManager {
         totalTokens: null,
         estimatedCost: 0,
         timestamp: new Date(startTime).toISOString(),
-        errorCode: error.statusCode || null,
+        errorCode: String(error.statusCode) || null,
         errorMessage: error.message || 'An unknown error occurred',
       };
-      await dbService.addUsageRecord(record as any);
+      await dbService.addUsageRecord(record);
       throw error;
     }
   }

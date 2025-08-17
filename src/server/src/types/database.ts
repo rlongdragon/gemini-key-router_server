@@ -1,12 +1,18 @@
 export interface UsageRecord {
   requestId: string;
   apiKeyId: string;
-  model: string; // Corresponds to modelId in the schema
-  status: string;
+  keyGroupId: string | null;
+  clientIdentifier: string | null;
+  modelId: string;
+  status: 'success' | 'failure';
   latency: number;
-  requestTokens: number; // Corresponds to promptTokens
-  responseTokens: number; // Corresponds to completionTokens
-  cost: number; // Corresponds to estimatedCost
+  promptTokens: number | null;
+  completionTokens: number | null;
+  totalTokens: number | null;
+  estimatedCost: number | null;
+  timestamp: string;
+  errorCode: string | null;
+  errorMessage: string | null;
 }
 
 export interface ApiKeyRecord {

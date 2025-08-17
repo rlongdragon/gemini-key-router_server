@@ -20,6 +20,7 @@ async function startServer() {
     /^\/v1beta\/models\/(?<modelId>[^/]+):(generateContent|streamGenerateContent)$/,
     async (req: Request, res: Response) => {
       const isStreaming = req.path.includes(':streamGenerateContent');
+      console.log(`Received request for model: ${req.params.modelId}, streaming: ${isStreaming}`);
       try {
         const result = await proxyManager.proxy(req);
 

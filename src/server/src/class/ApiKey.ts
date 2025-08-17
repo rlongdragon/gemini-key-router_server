@@ -47,6 +47,8 @@ class ApiKey {
     const genAI = new GoogleGenerativeAI(this.key);
     const model = genAI.getGenerativeModel({ model: modelId });
 
+    console.log(`Sending request to model: ${modelId} with key: ${this.getPartialKey(20)}`);
+
     if (stream) {
       return await model.generateContentStream(requestBody);
     } else {

@@ -92,11 +92,21 @@ export class DatabaseService {
    * @param record - The usage record to add.
    */
   public addUsageRecord(record: UsageRecord): void {
+    console.log('Adding usage record:', record);
     const stmt = this.db.prepare(
-      `INSERT INTO usage_history (requestId, apiKeyId, modelId, status, latency, promptTokens, completionTokens, estimatedCost, timestamp)
-       VALUES (@requestId, @apiKeyId, @model, @status, @latency, @requestTokens, @responseTokens, @cost, datetime('now'))`,
+      `INSERT INTO usage_history (
+        requestId, apiKeyId, keyGroupId, clientIdentifier, modelId,
+        status, latency, promptTokens, completionTokens, totalTokens,
+        estimatedCost, timestamp, errorCode, errorMessage
+      ) VALUES (
+        @requestId, @apiKeyId, @keyGroupId, @clientIdentifier, @modelId,
+        @status, @latency, @promptTokens, @completionTokens, @totalTokens,
+        @estimatedCost, @timestamp, @errorCode, @errorMessage
+      )`,
     );
     stmt.run(record);
+
+    console.log(`Usage record added with requestId: ${record.requestId}`);
   }
 
   /**
@@ -134,18 +144,22 @@ export class DatabaseService {
   // --- API Key Management ---
 
   public createKey(key: Omit<ApiKeyRecord, 'id' | 'created_at'>): void {
+    console.log('Creating new API key:', key);
     const stmt = this.db.prepare(
       `INSERT INTO api_keys (id, name, api_key, group_id, rpd, is_enabled)
        VALUES (?, ?, ?, ?, ?, ?)`,
     );
-    stmt.run(
+    const result = stmt.run(
       crypto.randomUUID(),
       key.name,
       key.api_key,
       key.group_id,
       key.rpd,
-      key.is_enabled,
+      key.is_enabled ? 1 : 0,
     );
+
+    console.log(`API key created with ID: ${result.lastInsertRowid}`);
+
   }
 
   public getKey(id: string): ApiKeyRecord {
