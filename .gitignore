@@ -28,3 +28,4 @@ yarn-error.log*
 # Other temporary files
 *.log
 *.tmp
+/data/
