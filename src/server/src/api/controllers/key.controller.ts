@@ -44,4 +44,36 @@ export class KeyController {
       next(error);
     }
   }
+
+  static async getKeyIds(req: Request, res: Response, next: NextFunction) {
+    try {
+      const keyIds = await keyManagementService.getKeyIds();
+      res.json(keyIds);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getKeyById(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { keyId } = req.params;
+      const key = await keyManagementService.getKeyById(keyId);
+      if (!key) {
+        return res.status(404).json({ message: 'Key not found' });
+      }
+      res.json(key);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  public static async getKeysByGroupId(req: Request, res: Response): Promise<void> {
+    try {
+      const { groupId } = req.params;
+      const keys = await keyManagementService.getKeysByGroupId(groupId);
+      res.status(200).json(keys);
+    } catch (error) {
+      res.status(500).json({ message: 'Error fetching keys for the group', error });
+    }
+  }
 }

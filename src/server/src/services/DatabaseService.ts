@@ -195,6 +195,16 @@ export class DatabaseService {
     stmt.run(...values, id);
   }
 
+  public getKeysByGroupId(groupId: string): ApiKeyRecord[] {
+    try {
+      const stmt = this.db.prepare('SELECT * FROM api_keys WHERE group_id = ?');
+      return stmt.all(groupId) as ApiKeyRecord[];
+    } catch (error) {
+      console.error(`Error fetching keys for group ${groupId}:`, error);
+      throw new Error('Failed to retrieve keys from database.');
+    }
+  }
+
   public deleteKey(id: string): void {
     const stmt = this.db.prepare('DELETE FROM api_keys WHERE id = ?');
     stmt.run(id);

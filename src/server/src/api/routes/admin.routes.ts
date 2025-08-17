@@ -13,6 +13,9 @@ router.get('/status-stream', SseController.streamStatus);
 
 // Key Management
 router.get('/keys', KeyController.getKeys);
+router.get('/keyIds', KeyController.getKeyIds);
+router.get('/key/:keyId', KeyController.getKeyById);
+router.get('/groups/:groupId/keys', KeyController.getKeysByGroupId);
 router.post('/keys', KeyController.createKey);
 router.put('/keys/:keyId', KeyController.updateKey);
 router.delete('/keys/:keyId', KeyController.deleteKey);

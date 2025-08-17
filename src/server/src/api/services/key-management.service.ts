@@ -22,6 +22,28 @@ export class KeyManagementService {
   public async deleteKey(id: string): Promise<void> {
     return dbService.deleteKey(id);
   }
+
+  public async getKeyById(id: string): Promise<ApiKeyRecord> {
+    return dbService.getKey(id);
+  }
+
+  public async getKeyIds(): Promise<{ [key: string]: string[] }> {
+    const keys = await dbService.getAllKeys();
+    const groupedKeys: { [key: string]: string[] } = {};
+
+    for (const key of keys) {
+      if (!groupedKeys[key.group_id]) {
+        groupedKeys[key.group_id] = [];
+      }
+      groupedKeys[key.group_id].push(key.id);
+    }
+
+    return groupedKeys;
+  }
+
+  public async getKeysByGroupId(groupId: string): Promise<ApiKeyRecord[]> {
+    return dbService.getKeysByGroupId(groupId);
+  }
 }
 
 export const keyManagementService = new KeyManagementService();

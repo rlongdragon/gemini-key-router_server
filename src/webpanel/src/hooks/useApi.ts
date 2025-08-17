@@ -6,15 +6,21 @@ interface UseApiState<T> {
   error: Error | null;
 }
 
-export function useApi<T>(url: string) {
+export function useApi<T>(url: string | null, deps: unknown[] = []) {
   const [state, setState] = useState<UseApiState<T>>({
     data: null,
-    loading: true,
+    loading: false,
     error: null,
   });
 
   useEffect(() => {
+    if (url === null) {
+      setState({ data: null, loading: false, error: null });
+      return;
+    }
+
     const fetchData = async () => {
+      setState({ data: null, loading: true, error: null });
       try {
         const response = await fetch(url);
         if (!response.ok) {
@@ -28,7 +34,8 @@ export function useApi<T>(url: string) {
     };
 
     fetchData();
-  }, [url]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [url, ...deps]);
 
   return state;
 }
