@@ -44,7 +44,7 @@ export default function AddModal({
               金鑰
             </label>
             <input
-              type="text"
+              type="password"
               id="key-value"
               name="key"
               className="w-full bg-gray-700 text-white p-2 rounded border border-gray-600 focus:ring-blue-500 focus:border-blue-500"

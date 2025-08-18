@@ -57,8 +57,9 @@ function Management() {
         },
         body: JSON.stringify({
           name,
-          key,
+          api_key: key,
           group_id: selectedGroupId,
+          rpd: 500,
         }),
       });
 

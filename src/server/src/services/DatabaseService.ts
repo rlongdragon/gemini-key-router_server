@@ -203,7 +203,7 @@ export class DatabaseService {
 
   public getKeysByGroupId(groupId: string): ApiKeyRecord[] {
     try {
-      // console.log(`#YJD6 getKeysByGroupId: ${groupId}`);
+      console.log(`#YJD6 getKeysByGroupId: ${groupId}`);
       // get db file path absolute path
       // const dbFilePath = path.resolve(this.db.filename);
       // console.log(`##YJD6-1 Database file path: ${dbFilePath}`);
