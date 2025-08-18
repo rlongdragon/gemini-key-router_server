@@ -25,6 +25,9 @@ class ApiKeyGroup {
   }
 
   public getNextAvailableKey(): ApiKey | undefined {
+    // console.log(`#VAFR Searching for next available key in group: ${this.id}`);
+    // // log apiKeys for debugging
+    // console.log(`#K13K Current keys in group ${this.id}:`, this.apiKeys);
     if (this.apiKeys.length === 0) {
       return undefined;
     }
@@ -56,7 +59,8 @@ class ApiKeysManager {
     const activeGroupId = await dbService.getSetting('active_key_group_id') || 'default';
     this.curentGroupId = activeGroupId;
 
-    const keysFromDb: ApiKeyRecord[] = await dbService.getKeysByGroup(activeGroupId);
+    const keysFromDb: ApiKeyRecord[] = await dbService.getKeysByGroupId(activeGroupId);
+    // console.log(`#9SQD Loading keys for group: ${activeGroupId}`, keysFromDb);
 
     this.apiKeyGroups.clear();
 

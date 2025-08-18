@@ -15,7 +15,7 @@ describe('ApiKeysManager', () => {
   beforeEach(() => {
     // Reset mocks before each test
     (mockedDbService.getSetting as jest.Mock).mockClear();
-    (mockedDbService.getKeysByGroup as jest.Mock).mockClear();
+    (mockedDbService.getKeysByGroupId as jest.Mock).mockClear();
     (mockedDbService.getUsageCountToday as jest.Mock).mockClear();
     manager = new ApiKeysManager();
   });
@@ -28,12 +28,12 @@ describe('ApiKeysManager', () => {
     ];
 
     (mockedDbService.getSetting as jest.Mock).mockResolvedValue('default');
-    (mockedDbService.getKeysByGroup as jest.Mock).mockResolvedValue(mockKeys);
+    (mockedDbService.getKeysByGroupId as jest.Mock).mockResolvedValue(mockKeys);
 
     await manager.loadKeysFromDb();
 
     expect(mockedDbService.getSetting).toHaveBeenCalledWith('active_key_group_id');
-    expect(mockedDbService.getKeysByGroup).toHaveBeenCalledWith('default');
+    expect(mockedDbService.getKeysByGroupId).toHaveBeenCalledWith('default');
     expect(manager.curentGroupId).toBe('default');
     expect(manager.getApiKey('key1')).toBeInstanceOf(ApiKey);
     expect(manager.getApiKey('key2')).toBeInstanceOf(ApiKey);
@@ -46,7 +46,7 @@ describe('ApiKeysManager', () => {
         { id: 'key2', api_key: 'key-value-2', group_id: 'default', rpd: 100, is_enabled: 1, name: 'Key 2', created_at: '' },
     ];
     (mockedDbService.getSetting as jest.Mock).mockResolvedValue('default');
-    (mockedDbService.getKeysByGroup as jest.Mock).mockResolvedValue(mockKeys);
+    (mockedDbService.getKeysByGroupId as jest.Mock).mockResolvedValue(mockKeys);
     (mockedDbService.getUsageCountToday as jest.Mock).mockReturnValue(0);
 
     await manager.loadKeysFromDb();
@@ -68,7 +68,7 @@ describe('ApiKeysManager', () => {
         { id: 'key3', api_key: 'key-value-3', group_id: 'default', rpd: 1, is_enabled: 1, name: 'Key 3', created_at: '' },
     ];
     (mockedDbService.getSetting as jest.Mock).mockResolvedValue('default');
-    (mockedDbService.getKeysByGroup as jest.Mock).mockResolvedValue(mockKeys);
+    (mockedDbService.getKeysByGroupId as jest.Mock).mockResolvedValue(mockKeys);
     
     // Mock usage counts
     (mockedDbService.getUsageCountToday as jest.Mock).mockImplementation((keyId: string) => {
@@ -96,7 +96,7 @@ describe('ApiKeysManager', () => {
         { id: 'key2', api_key: 'key-value-2', group_id: 'default', rpd: 1, is_enabled: 1, name: 'Key 2', created_at: '' },
     ];
     (mockedDbService.getSetting as jest.Mock).mockResolvedValue('default');
-    (mockedDbService.getKeysByGroup as jest.Mock).mockResolvedValue(mockKeys);
+    (mockedDbService.getKeysByGroupId as jest.Mock).mockResolvedValue(mockKeys);
     (mockedDbService.getUsageCountToday as jest.Mock).mockReturnValue(2); // All keys exceeded limit
 
     await manager.loadKeysFromDb();

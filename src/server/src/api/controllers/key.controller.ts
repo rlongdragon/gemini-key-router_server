@@ -69,6 +69,7 @@ export class KeyController {
 
   public static async getKeysByGroupId(req: Request, res: Response): Promise<void> {
     try {
+      console.log(`#3AVJ Fetching keys for group: ${req.params.groupId}`); // Debugging log
       const { groupId } = req.params;
       const keys = await keyManagementService.getKeysByGroupId(groupId);
       res.status(200).json(keys);

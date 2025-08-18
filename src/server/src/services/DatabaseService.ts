@@ -17,6 +17,8 @@ export class DatabaseService {
   private db: Database.Database;
 
   private constructor() {
+    console.log("#1SAL Initializing DatabaseService...");
+
     // Load configuration
     const configPath = path.join(__dirname, '..', '..', 'config', 'config.json');
     const config: Config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
@@ -29,6 +31,8 @@ export class DatabaseService {
 
     // Connect to the database
     this.db = new Database(config.database.path);
+    const absoluteDbPath = path.resolve(config.database.path);
+    // console.log(`#C1NS Connected to database at ${absoluteDbPath}`);
 
     // Initialize the database
     this.runMigrations();
@@ -167,10 +171,12 @@ export class DatabaseService {
     return stmt.get(id) as ApiKeyRecord;
   }
 
-  public getKeysByGroup(groupId: string): ApiKeyRecord[] {
-    const stmt = this.db.prepare('SELECT * FROM api_keys WHERE group_id = ?');
-    return stmt.all(groupId) as ApiKeyRecord[];
-  }
+  // public getKeysByGroupId(groupId: string): ApiKeyRecord[] {
+  //   const stmt = this.db.prepare("SELECT * FROM api_keys WHERE group_id = ?");
+  //   console.log(`#HS55 Fetching keys for group:${groupId}`);
+  //   console.log(stmt.all(groupId));
+  //   return stmt.all(groupId) as ApiKeyRecord[];
+  // }
 
   public getAllKeys(): ApiKeyRecord[] {
     const stmt = this.db.prepare('SELECT * FROM api_keys');
@@ -197,7 +203,13 @@ export class DatabaseService {
 
   public getKeysByGroupId(groupId: string): ApiKeyRecord[] {
     try {
+      // console.log(`#YJD6 getKeysByGroupId: ${groupId}`);
+      // get db file path absolute path
+      // const dbFilePath = path.resolve(this.db.filename);
+      // console.log(`##YJD6-1 Database file path: ${dbFilePath}`);
+      
       const stmt = this.db.prepare('SELECT * FROM api_keys WHERE group_id = ?');
+      // console.log(`#YJD6-1:${groupId}`);
       return stmt.all(groupId) as ApiKeyRecord[];
     } catch (error) {
       console.error(`Error fetching keys for group ${groupId}:`, error);
