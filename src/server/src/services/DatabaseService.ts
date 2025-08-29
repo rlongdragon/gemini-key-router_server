@@ -1,8 +1,13 @@
-import fs from 'fs';
-import path from 'path';
-import Database from 'better-sqlite3';
-import { ApiKeyRecord, KeyGroupRecord, UsageRecord } from '../types/database';
-import crypto from 'crypto';
+import fs from "fs";
+import path from "path";
+import Database from "better-sqlite3";
+import {
+  ApiKeyRecord,
+  KeyGroupRecord,
+  UsageRecord,
+  UsageHistoryRecord,
+} from "../types/database";
+import crypto from "crypto";
 
 // Define the structure of the config file
 interface Config {
@@ -20,8 +25,14 @@ export class DatabaseService {
     console.log("#1SAL Initializing DatabaseService...");
 
     // Load configuration
-    const configPath = path.join(__dirname, '..', '..', 'config', 'config.json');
-    const config: Config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    const configPath = path.join(
+      __dirname,
+      "..",
+      "..",
+      "config",
+      "config.json"
+    );
+    const config: Config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
 
     // Ensure the database directory exists
     const dbPath = path.dirname(config.database.path);
@@ -55,28 +66,43 @@ export class DatabaseService {
     `);
 
     // Get executed migrations
-    const executedMigrations = this.db.prepare('SELECT version FROM schema_migrations').all().map((row: any) => row.version);
+    const executedMigrations = this.db
+      .prepare("SELECT version FROM schema_migrations")
+      .all()
+      .map((row: any) => row.version);
 
     // Read migration files
-    const migrationsDir = path.join(__dirname, '..', 'db', 'migrations');
-    const migrationFiles = fs.readdirSync(migrationsDir)
-      .filter(file => file.endsWith('.sql'))
+    const migrationsDir = path.join(__dirname, "..", "db", "migrations");
+    const migrationFiles = fs
+      .readdirSync(migrationsDir)
+      .filter((file) => file.endsWith(".sql"))
       .sort();
 
     // Execute new migrations
     for (const file of migrationFiles) {
       if (!executedMigrations.includes(file)) {
-        const migrationSql = fs.readFileSync(path.join(migrationsDir, file), 'utf-8');
+        const migrationSql = fs.readFileSync(
+          path.join(migrationsDir, file),
+          "utf-8"
+        );
         this.db.exec(migrationSql);
-        this.db.prepare('INSERT INTO schema_migrations (version) VALUES (?)').run(file);
+        this.db
+          .prepare("INSERT INTO schema_migrations (version) VALUES (?)")
+          .run(file);
         console.log(`Migration executed: ${file}`);
       }
     }
   }
 
   private cleanupOldRecords(): void {
-    const configPath = path.join(__dirname, '..', '..', 'config', 'config.json');
-    const config: Config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    const configPath = path.join(
+      __dirname,
+      "..",
+      "..",
+      "config",
+      "config.json"
+    );
+    const config: Config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
     const retentionDays = config.database.retentionDays;
 
     if (retentionDays > 0) {
@@ -84,7 +110,9 @@ export class DatabaseService {
       cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
       const isoString = cutoffDate.toISOString();
 
-      const stmt = this.db.prepare(`DELETE FROM usage_history WHERE timestamp < ?`);
+      const stmt = this.db.prepare(
+        `DELETE FROM usage_history WHERE timestamp < ?`
+      );
       const result = stmt.run(isoString);
       console.log(`Cleaned up ${result.changes} old records.`);
     }
@@ -96,7 +124,7 @@ export class DatabaseService {
    * @param record - The usage record to add.
    */
   public addUsageRecord(record: UsageRecord): void {
-    console.log('Adding usage record:', record);
+    console.log("Adding usage record:", record);
     const stmt = this.db.prepare(
       `INSERT INTO usage_history (
         requestId, apiKeyId, keyGroupId, clientIdentifier, modelId,
@@ -106,7 +134,7 @@ export class DatabaseService {
         @requestId, @apiKeyId, @keyGroupId, @clientIdentifier, @modelId,
         @status, @latency, @promptTokens, @completionTokens, @totalTokens,
         @estimatedCost, @timestamp, @errorCode, @errorMessage
-      )`,
+      )`
     );
     stmt.run(record);
 
@@ -122,7 +150,7 @@ export class DatabaseService {
   public getUsageCountToday(apiKeyId: string): number {
     const startOfToday = this.getStartOfTodayInPST();
     const stmt = this.db.prepare(
-      'SELECT COUNT(*) as count FROM usage_history WHERE apiKeyId = ? AND timestamp >= ?',
+      "SELECT COUNT(*) as count FROM usage_history WHERE apiKeyId = ? AND timestamp >= ?"
     );
     const result = stmt.get(apiKeyId, startOfToday) as { count: number };
     return result.count;
@@ -131,7 +159,7 @@ export class DatabaseService {
   public getTotalUsageToday(): number {
     const startOfToday = this.getStartOfTodayInPST();
     const stmt = this.db.prepare(
-      'SELECT COUNT(*) as count FROM usage_history WHERE timestamp >= ?',
+      "SELECT COUNT(*) as count FROM usage_history WHERE timestamp >= ?"
     );
     const result = stmt.get(startOfToday) as { count: number };
     return result.count;
@@ -139,19 +167,43 @@ export class DatabaseService {
 
   private getStartOfTodayInPST(): string {
     const losAngelesDate = new Date(
-      new Date().toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }),
+      new Date().toLocaleString("en-US", { timeZone: "America/Los_Angeles" })
     );
     losAngelesDate.setHours(0, 0, 0, 0);
     return losAngelesDate.toISOString();
   }
 
+  public getUsageHistory(limit = 100): UsageRecord[] {
+    const stmt = this.db.prepare(
+      "SELECT * FROM usage_history ORDER BY timestamp DESC LIMIT ?"
+    );
+    return stmt.all(limit) as UsageRecord[];
+  }
+
+  public createUsageHistory(
+    usage: Omit<UsageHistoryRecord, "id" | "timestamp">
+  ): UsageHistoryRecord {
+    const stmt = this.db.prepare(
+      "INSERT INTO usage_history (api_key_id, status, error_message) VALUES (?, ?, ?)"
+    );
+    const result = stmt.run(
+      usage.api_key_id,
+      usage.status,
+      usage.error_message
+    );
+    const newUsage = this.db
+      .prepare("SELECT * FROM usage_history WHERE id = ?")
+      .get(result.lastInsertRowid);
+    return newUsage as UsageHistoryRecord;
+  }
+
   // --- API Key Management ---
 
-  public createKey(key: Omit<ApiKeyRecord, 'id' | 'created_at'>): void {
-    console.log('Creating new API key:', key);
+  public createKey(key: Omit<ApiKeyRecord, "id" | "created_at">): void {
+    console.log("Creating new API key:", key);
     const stmt = this.db.prepare(
       `INSERT INTO api_keys (id, name, api_key, group_id, rpd, is_enabled)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?)`
     );
     const result = stmt.run(
       crypto.randomUUID(),
@@ -159,15 +211,14 @@ export class DatabaseService {
       key.api_key,
       key.group_id,
       key.rpd,
-      key.is_enabled ? 1 : 0,
+      key.is_enabled ? 1 : 0
     );
 
     console.log(`API key created with ID: ${result.lastInsertRowid}`);
-
   }
 
   public getKey(id: string): ApiKeyRecord {
-    const stmt = this.db.prepare('SELECT * FROM api_keys WHERE id = ?');
+    const stmt = this.db.prepare("SELECT * FROM api_keys WHERE id = ?");
     return stmt.get(id) as ApiKeyRecord;
   }
 
@@ -179,13 +230,13 @@ export class DatabaseService {
   // }
 
   public getAllKeys(): ApiKeyRecord[] {
-    const stmt = this.db.prepare('SELECT * FROM api_keys');
+    const stmt = this.db.prepare("SELECT * FROM api_keys");
     return stmt.all() as ApiKeyRecord[];
   }
 
   public updateKey(
     id: string,
-    data: Partial<Omit<ApiKeyRecord, 'id' | 'created_at'>>,
+    data: Partial<Omit<ApiKeyRecord, "id" | "created_at">>
   ): void {
     const fields = Object.keys(data);
     const values = Object.values(data);
@@ -194,9 +245,9 @@ export class DatabaseService {
       return;
     }
 
-    const setClause = fields.map((field) => `${field} = ?`).join(', ');
+    const setClause = fields.map((field) => `${field} = ?`).join(", ");
     const stmt = this.db.prepare(
-      `UPDATE api_keys SET ${setClause} WHERE id = ?`,
+      `UPDATE api_keys SET ${setClause} WHERE id = ?`
     );
     stmt.run(...values, id);
   }
@@ -207,41 +258,53 @@ export class DatabaseService {
       // get db file path absolute path
       // const dbFilePath = path.resolve(this.db.filename);
       // console.log(`##YJD6-1 Database file path: ${dbFilePath}`);
-      
-      const stmt = this.db.prepare('SELECT * FROM api_keys WHERE group_id = ?');
-      // console.log(`#YJD6-1:${groupId}`);
+
+      const stmt = this.db.prepare("SELECT * FROM api_keys WHERE group_id = ?");
+      console.log(`#YJD6-1 group_id: [${groupId}]`);
+      console.log(`#YJD6-2 find ${stmt.all(groupId).length} keys`);
       return stmt.all(groupId) as ApiKeyRecord[];
     } catch (error) {
       console.error(`Error fetching keys for group ${groupId}:`, error);
-      throw new Error('Failed to retrieve keys from database.');
+      throw new Error("Failed to retrieve keys from database.");
     }
   }
 
   public deleteKey(id: string): void {
-    const stmt = this.db.prepare('DELETE FROM api_keys WHERE id = ?');
+    const stmt = this.db.prepare("DELETE FROM api_keys WHERE id = ?");
     stmt.run(id);
   }
 
   // --- Key Group Management ---
 
-  public createGroup(group: Omit<KeyGroupRecord, 'id' | 'created_at'>): void {
-    const stmt = this.db.prepare('INSERT INTO key_groups (id, name) VALUES (?, ?)');
-    stmt.run(crypto.randomUUID(), group.name);
+  public createGroup(
+    group: Omit<KeyGroupRecord, "id" | "created_at" | "is_active">
+  ): KeyGroupRecord {
+    const id = crypto.randomUUID();
+    const stmt = this.db.prepare(
+      "INSERT INTO key_groups (id, name) VALUES (?, ?)"
+    );
+    stmt.run(id, group.name);
+    return this.getGroup(id)!;
   }
 
-  public getGroup(id: string): KeyGroupRecord {
-    const stmt = this.db.prepare('SELECT * FROM key_groups WHERE id = ?');
-    return stmt.get(id) as KeyGroupRecord;
+  public getGroup(id: string): KeyGroupRecord | null {
+    const stmt = this.db.prepare("SELECT * FROM key_groups WHERE id = ?");
+    return stmt.get(id) as KeyGroupRecord | null;
+  }
+
+  public getGroupByName(name: string): KeyGroupRecord | null {
+    const stmt = this.db.prepare("SELECT * FROM key_groups WHERE name = ?");
+    return stmt.get(name) as KeyGroupRecord | null;
   }
 
   public getAllGroups(): KeyGroupRecord[] {
-    const stmt = this.db.prepare('SELECT * FROM key_groups');
+    const stmt = this.db.prepare("SELECT * FROM key_groups");
     return stmt.all() as KeyGroupRecord[];
   }
 
   public updateGroup(
     id: string,
-    data: Partial<Omit<KeyGroupRecord, 'id' | 'created_at'>>,
+    data: Partial<Omit<KeyGroupRecord, "id" | "created_at">>
   ): void {
     const fields = Object.keys(data);
     const values = Object.values(data);
@@ -250,31 +313,45 @@ export class DatabaseService {
       return;
     }
 
-    const setClause = fields.map((field) => `${field} = ?`).join(', ');
+    const setClause = fields.map((field) => `${field} = ?`).join(", ");
     const stmt = this.db.prepare(
-      `UPDATE key_groups SET ${setClause} WHERE id = ?`,
+      `UPDATE key_groups SET ${setClause} WHERE id = ?`
     );
     stmt.run(...values, id);
   }
 
   public deleteGroup(id: string): void {
-    const stmt = this.db.prepare('DELETE FROM key_groups WHERE id = ?');
+    const stmt = this.db.prepare("DELETE FROM key_groups WHERE id = ?");
     stmt.run(id);
   }
-
   // --- System Settings ---
 
   public getSetting(key: string): string | null {
-    const stmt = this.db.prepare('SELECT value FROM system_settings WHERE key = ?');
+    const stmt = this.db.prepare(
+      "SELECT value FROM system_settings WHERE key = ?"
+    );
     const result = stmt.get(key) as { value: string } | undefined;
     return result ? result.value : null;
   }
 
   public setSetting(key: string, value: string): void {
     const stmt = this.db.prepare(
-      'INSERT INTO system_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+      "INSERT INTO system_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"
     );
     stmt.run(key, value);
+  }
+
+  public getActiveGroup(): KeyGroupRecord | null {
+    const activeGroupId = this.getSetting("active_group_id");
+    console.log("#FAK7", activeGroupId);
+    if (activeGroupId) {
+      return this.getGroup(activeGroupId);
+    }
+    return null;
+  }
+
+  public setActiveGroup(groupId: string): void {
+    this.setSetting("active_group_id", groupId);
   }
 }
 

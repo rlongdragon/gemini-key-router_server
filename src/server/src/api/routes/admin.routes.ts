@@ -9,6 +9,7 @@ const router = Router();
 
 // Stats
 router.get('/stats', StatsController.getStats);
+router.get('/history', StatsController.getUsageHistory);
 router.get('/status-stream', SseController.streamStatus);
 
 // Key Management
@@ -21,8 +22,10 @@ router.put('/keys/:keyId', KeyController.updateKey);
 router.delete('/keys/:keyId', KeyController.deleteKey);
 
 // Group Management
-router.get('/groups', GroupController.getGroups);
+router.get('/groups', GroupController.getAllGroups);
+router.get('/groups/active', GroupController.getActiveGroup);
 router.post('/groups', GroupController.createGroup);
+router.put('/groups/active', GroupController.setActiveGroup);
 router.put('/groups/:groupId', GroupController.updateGroup);
 router.delete('/groups/:groupId', GroupController.deleteGroup);
 

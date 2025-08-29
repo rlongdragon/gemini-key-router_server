@@ -2,8 +2,9 @@ import { Request } from 'express';
 import { randomUUID } from 'crypto';
 import ApiKeysManager from "./ApiKeysManager";
 import { dbService } from '../services/DatabaseService';
-import { keyStatusService } from '../services/KeyStatusService';
 import { UsageRecord } from '../types/database';
+import { broadcastSseEvent } from '../api/controllers/sse.controller';
+import { LanguageModelUsage } from 'ai';
 
 export default class ProxyManager {
   private apiKeys: ApiKeysManager;
@@ -35,55 +36,65 @@ export default class ProxyManager {
       throw new Error('No available API keys in the active group.');
     }
 
-    keyStatusService.updateKeyStatus(apiKey.id, 'pending');
+    broadcastSseEvent('key_usage_start', { keyId: apiKey.id });
 
     try {
       const result = await apiKey.sendRequest(modelId, req.body, isStreaming);
       const latency = Date.now() - startTime;
-
-      // console.log(result);
-
-      let usageMetadata = result.usageMetadata || {};
+      broadcastSseEvent('key_usage_end', { keyId: apiKey.id });
 
       if (isStreaming) {
-        const finalResponse = await result.response;
-        usageMetadata = finalResponse.usageMetadata;
-      } 
-      
-      const { promptTokenCount, candidatesTokenCount, totalTokenCount } =
-        usageMetadata || {
-          promptTokenCount: null,
-          candidatesTokenCount: null,
-          totalTokenCount: null,
+        result.usage
+          .then((usage: LanguageModelUsage) => {
+            const record: UsageRecord = {
+              requestId,
+              apiKeyId: apiKey.id,
+              keyGroupId: groupId,
+              clientIdentifier: req.ip || null,
+              modelId,
+              status: "success",
+              latency,
+              promptTokens: usage.inputTokens ?? null,
+              completionTokens: usage.outputTokens ?? null,
+              totalTokens: usage.totalTokens ?? null,
+              estimatedCost: 0, // Placeholder
+              timestamp: new Date(startTime).toISOString(),
+              errorCode: null,
+              errorMessage: null,
+            };
+            dbService.addUsageRecord(record);
+          })
+          .catch((error: any) => {
+            console.error(
+              `[${requestId}] Failed to record usage for streaming request:`,
+              error
+            );
+          });
+      } else {
+        const usage = result.usage as LanguageModelUsage;
+        const record: UsageRecord = {
+          requestId,
+          apiKeyId: apiKey.id,
+          keyGroupId: groupId,
+          clientIdentifier: req.ip || null,
+          modelId,
+          status: "success",
+          latency,
+          promptTokens: usage.inputTokens ?? null,
+          completionTokens: usage.outputTokens ?? null,
+          totalTokens: usage.totalTokens ?? null,
+          estimatedCost: 0, // Placeholder
+          timestamp: new Date(startTime).toISOString(),
+          errorCode: null,
+          errorMessage: null,
         };
-
-      keyStatusService.updateKeyStatus(apiKey.id, 'available');
-      const record: UsageRecord = {
-        requestId,
-        apiKeyId: apiKey.id,
-        keyGroupId: groupId,
-        clientIdentifier: req.ip || null,
-        modelId,
-        status: 'success',
-        latency,
-        promptTokens: promptTokenCount,
-        completionTokens: candidatesTokenCount,
-        totalTokens: totalTokenCount,
-        estimatedCost: 0, // Placeholder
-        timestamp: new Date(startTime).toISOString(),
-        errorCode: null,
-        errorMessage: null,
-      };
-      await dbService.addUsageRecord(record);
+        await dbService.addUsageRecord(record);
+      }
 
       return result;
     } catch (error: any) {
-      if (error.statusCode === 429) {
-        keyStatusService.updateKeyStatus(apiKey.id, 'exhausted');
-      } else {
-        keyStatusService.updateKeyStatus(apiKey.id, 'available');
-      }
       const latency = Date.now() - startTime;
+      broadcastSseEvent('key_usage_end', { keyId: apiKey.id });
       const record: UsageRecord = {
         requestId,
         apiKeyId: apiKey.id,

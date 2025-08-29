@@ -32,7 +32,7 @@ describe('ApiKeysManager', () => {
 
     await manager.loadKeysFromDb();
 
-    expect(mockedDbService.getSetting).toHaveBeenCalledWith('active_key_group_id');
+    expect(mockedDbService.getSetting).toHaveBeenCalledWith('active_group_id');
     expect(mockedDbService.getKeysByGroupId).toHaveBeenCalledWith('default');
     expect(manager.curentGroupId).toBe('default');
     expect(manager.getApiKey('key1')).toBeInstanceOf(ApiKey);

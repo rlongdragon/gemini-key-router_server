@@ -1,0 +1,12 @@
+.pending-glow {
+  animation: glow 1.5s infinite alternate;
+}
+
+@keyframes glow {
+  from {
+    box-shadow: 0 0 5px -5px #a8dadc;
+  }
+  to {
+    box-shadow: 0 0 5px 5px #a8dadc;
+  }
+}

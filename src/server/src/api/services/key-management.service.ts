@@ -1,9 +1,21 @@
 import { dbService } from '../../services/DatabaseService';
 import { ApiKeyRecord } from '../../types/database';
+import { keyStatusService } from '../../services/KeyStatusService';
+
+const maskApiKey = (apiKey: string): string => {
+  if (!apiKey || apiKey.length <= 8) {
+    return '********'; // 或者其他預設遮罩
+  }
+  return `${apiKey.substring(0, 4)}****${apiKey.substring(apiKey.length - 4)}`;
+};
 
 export class KeyManagementService {
   public async getKeys(): Promise<ApiKeyRecord[]> {
-    return dbService.getAllKeys();
+    const keys = await dbService.getAllKeys();
+    return keys.map(key => ({
+      ...key,
+      api_key: maskApiKey(key.api_key),
+    }));
   }
 
   public async createKey(
@@ -16,7 +28,7 @@ export class KeyManagementService {
     id: string,
     data: Partial<Omit<ApiKeyRecord, 'id' | 'created_at'>>,
   ): Promise<void> {
-    return dbService.updateKey(id, data);
+    await dbService.updateKey(id, data);
   }
 
   public async deleteKey(id: string): Promise<void> {

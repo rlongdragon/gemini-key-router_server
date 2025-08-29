@@ -10,4 +10,17 @@ export class StatsController {
       next(error);
     }
   }
+
+  static async getUsageHistory(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const history = await statsService.getUsageHistory();
+      res.json(history);
+    } catch (error) {
+      next(error);
+    }
+  }
 }

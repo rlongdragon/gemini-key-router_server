@@ -13,7 +13,9 @@ export class KeyController {
 
   static async createKey(req: Request, res: Response, next: NextFunction) {
     try {
-      const { name, api_key, group_id, rpd, is_enabled } = req.body;
+      console.log("#4170 Creating key with body:", req.body); // Debugging log
+      const { name, api_key, group_id, rpd, is_enabled } = {rpd:500, ... (req.body)};
+      
       if (!api_key || !group_id) {
         return res.status(400).json({ message: 'api_key and group_id are required' });
       }

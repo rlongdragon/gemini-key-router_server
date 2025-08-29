@@ -56,7 +56,7 @@ class ApiKeysManager {
   }
 
   public async loadKeysFromDb(): Promise<void> {
-    const activeGroupId = await dbService.getSetting('active_key_group_id') || 'default';
+    const activeGroupId = await dbService.getSetting('active_group_id') || 'default';
     this.curentGroupId = activeGroupId;
 
     const keysFromDb: ApiKeyRecord[] = await dbService.getKeysByGroupId(activeGroupId);
@@ -69,6 +69,7 @@ class ApiKeysManager {
 
     keysFromDb.forEach(item => {
       if (item.is_enabled) {
+        // console.log(`#TSVT Adding key: ${item.id} to group: ${activeGroupId}`);
         const apiKey = new ApiKey(item.id, item.api_key, item.rpd || 1000);
         group.addApiKey(apiKey);
       }

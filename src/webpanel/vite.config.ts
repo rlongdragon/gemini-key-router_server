@@ -13,13 +13,15 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
+    host: "0.0.0.0",
+    open: true,
   },
   build: {
-    outDir: '../../dist/webpanel',
+    outDir: "../../dist/webpanel",
     rollupOptions: {
       input: {
-        main: path.resolve(__dirname, 'index.html'),
-        management: path.resolve(__dirname, 'management.html'),
+        main: path.resolve(__dirname, "index.html"),
+        management: path.resolve(__dirname, "management.html"),
       },
     },
   },

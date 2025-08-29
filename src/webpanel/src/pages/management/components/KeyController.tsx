@@ -15,7 +15,7 @@ export default function KeyController({
   setIsDeleteModalOpen,
   keyData: key,
 }: KeyControllerProps) {
-  console.log("Rendering key:", key);
+  // console.log("Rendering key:", key);
   return (
     <tr key={key.id}>
       <td className="px-6 py-4 whitespace-nowrap">{key.name}</td>

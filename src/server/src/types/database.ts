@@ -30,3 +30,11 @@ export interface KeyGroupRecord {
   name: string;
   created_at: string;
 }
+
+export interface UsageHistoryRecord {
+ id: number;
+ timestamp: string;
+ api_key_id: string;
+ status: 'success' | 'error';
+ error_message: string | null;
+}

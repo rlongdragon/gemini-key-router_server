@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useApi } from "../../hooks/useApi";
 import { useSse } from "../../hooks/useSse";
+import styles from "./Dashboard.module.css";
 
 interface Stats {
   totalKeys: number;
@@ -11,13 +12,8 @@ interface Stats {
 interface ApiKey {
   id: number;
   name: string;
-  key: string;
-  status: string;
-}
-
-interface KeyStatusUpdate {
-  id: number;
-  status: string;
+  api_key: string; // Changed from 'key' to 'api_key'
+  is_enabled: boolean; // Added is_enabled
 }
 
 interface OverviewUnitData {
@@ -53,6 +49,7 @@ interface KeyData {
     rpd: number | null;
     tpm: number | null;
   };
+  pendingKeyIds: Set<number>;
 }
 
 function Key(data: KeyData) {
@@ -121,7 +118,7 @@ function Key(data: KeyData) {
     <tr
       className={`hover:bg-gray-700 ${
         data.status === "disabled" ? "opacity-50" : ""
-      }`}
+      } ${data.pendingKeyIds.has(parseInt(data.keyId)) ? styles.pendingGlow : ""}`}
     >
       <td className="px-6 py-2 whitespace-nowrap text-sm font-medium text-gray-300 font-mono">
         {data.apiKey}
@@ -219,37 +216,34 @@ const formatTimeAgo = (date: Date): string => {
 };
 
 const TimestampDisplay: React.FC<TimestampDisplayProps> = ({ date }) => {
-  // test is date is a valid Date object
-  if (!(date instanceof Date) || isNaN(date.getTime())) {
-    return <span>Invalid date</span>;
-  }
-
-  const [displayTime, setDisplayTime] = useState(formatTimeAgo(date));
+  const [displayTime, setDisplayTime] = useState('');
 
   useEffect(() => {
-    const timer = setInterval(() => {
+    if (date instanceof Date && !isNaN(date.getTime())) {
       setDisplayTime(formatTimeAgo(date));
-    }, 1000);
-
-    return () => clearInterval(timer);
+      const timer = setInterval(() => {
+        setDisplayTime(formatTimeAgo(date));
+      }, 1000);
+      return () => clearInterval(timer);
+    } else {
+      setDisplayTime('Invalid date');
+    }
   }, [date]);
 
   return <span>{displayTime}</span>;
 };
 
 function Dashboard() {
-  const {
-    data: stats,
-    loading: statsLoading,
-    error: statsError,
-  } = useApi<Stats>("/api/v1/admin/stats");
-  const {
-    data: initialKeys,
-    loading: keysLoading,
-    error: keysError,
-  } = useApi<ApiKey[]>("/api/v1/admin/keys");
-  const sseData = useSse<KeyStatusUpdate>("/api/v1/admin/status-stream");
+  const { data: stats, loading: statsLoading, request: fetchStats } = useApi<Stats>();
+  const { data: initialKeys, loading: keysLoading, error: keysError, request: fetchKeys } = useApi<ApiKey[]>();
+  const eventSource = useSse("/api/v1/admin/status-stream");
   const [keys, setKeys] = useState<ApiKey[]>([]);
+  const [pendingKeyIds, setPendingKeyIds] = useState(new Set<number>());
+
+  useEffect(() => {
+    fetchStats("/api/v1/admin/stats");
+    fetchKeys("/api/v1/admin/keys");
+  }, [fetchStats, fetchKeys]);
 
   useEffect(() => {
     if (initialKeys) {
@@ -258,14 +252,30 @@ function Dashboard() {
   }, [initialKeys]);
 
   useEffect(() => {
-    if (sseData) {
-      setKeys((prevKeys) =>
-        prevKeys.map((key) =>
-          key.id === sseData.id ? { ...key, status: sseData.status } : key
-        )
-      );
+    if (eventSource) {
+      const handleKeyUsageStart = (event: MessageEvent) => {
+        const data = JSON.parse(event.data);
+        setPendingKeyIds((prev) => new Set(prev).add(data.keyId));
+      };
+
+      const handleKeyUsageEnd = (event: MessageEvent) => {
+        const data = JSON.parse(event.data);
+        setPendingKeyIds((prev) => {
+          const newSet = new Set(prev);
+          newSet.delete(data.keyId);
+          return newSet;
+        });
+      };
+
+      eventSource.addEventListener('key_usage_start', handleKeyUsageStart);
+      eventSource.addEventListener('key_usage_end', handleKeyUsageEnd);
+
+      return () => {
+        eventSource.removeEventListener('key_usage_start', handleKeyUsageStart);
+        eventSource.removeEventListener('key_usage_end', handleKeyUsageEnd);
+      };
     }
-  }, [sseData]);
+  }, [eventSource]);
 
   useEffect(() => {
     console.log(stats);
@@ -338,61 +348,21 @@ function Dashboard() {
               </tr>
             ) : (
               <>
-                <Key
-                  apiKey={"AIza*******************************mFzM"}
-                  keyId={"uab3xcz"}
-                  status={"avaliable"}
-                  statusCode={200}
-                  inputToken={47.5}
-                  outputToken={10}
-                  useTime={1450}
-                  lastUsed={new Date(new Date() - 1000 * 50)}
-                  quota={{ rpm: 20, rpd: 20, tpm: 60 }}
-                />
-                <Key
-                  apiKey={"AIza*******************************mFzM"}
-                  keyId={"uab3xcz"}
-                  status={"avaliable"}
-                  statusCode={200}
-                  inputToken={47.5}
-                  outputToken={10}
-                  useTime={1450}
-                  lastUsed={new Date(new Date() - 1000 * 30)}
-                  quota={{ rpm: 40, rpd: 30, tpm: 20 }}
-                />
-                <Key
-                  apiKey={"AIza*******************************mFzM"}
-                  keyId={"uab3xcz"}
-                  status={"avaliable"}
-                  statusCode={200}
-                  inputToken={47.5}
-                  outputToken={10}
-                  useTime={1450}
-                  lastUsed={new Date(new Date() - 1000 * 20)}
-                  quota={{ rpm: 80, rpd: 60, tpm: 90 }}
-                />
-                <Key
-                  apiKey={"AIza*******************************mFzM"}
-                  keyId={"uab3xcz"}
-                  status={"faild"}
-                  statusCode={429}
-                  inputToken={0}
-                  outputToken={0}
-                  useTime={0}
-                  lastUsed={new Date(1754198775000)}
-                  quota={{ rpm: 0, rpd: 100, tpm: 0 }}
-                />
-                <Key
-                  apiKey={"AIza*******************************mFzM"}
-                  keyId={"uab3xcz"}
-                  status={"avaliable"}
-                  statusCode={200}
-                  inputToken={47.5}
-                  outputToken={10}
-                  useTime={1450}
-                  lastUsed={new Date(new Date())}
-                  quota={{ rpm: 20, rpd: 10, tpm: 30 }}
-                />
+                {keys.map((key) => (
+                  <Key
+                    key={key.id}
+                    apiKey={key.api_key}
+                    keyId={key.id.toString()}
+                    status={key.is_enabled ? "avaliable" : "disabled"} // 根據 is_enabled 判斷狀態
+                    statusCode={null} // 這裡需要從後端獲取實際的狀態碼，目前暫時設為 null
+                    inputToken={null} // 這裡需要從後端獲取實際的 inputToken
+                    outputToken={null} // 這裡需要從後端獲取實際的 outputToken
+                    useTime={null} // 這裡需要從後端獲取實際的 useTime
+                    lastUsed={null} // 這裡需要從後端獲取實際的 lastUsed
+                    quota={{ rpm: null, rpd: null, tpm: null }} // 這裡需要從後端獲取實際的 quota
+                    pendingKeyIds={pendingKeyIds}
+                  />
+                ))}
               </>
             )}
           </tbody>

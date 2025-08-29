@@ -1,14 +1,20 @@
-import React, { useState, useEffect } from "react";
-import { useApi } from "../../hooks/useApi";
+import React, { useState, useEffect, useCallback } from "react";
 import type { ApiKeyRecord } from "../../types/ApiKeyRecord";
 import type { KeyGroupRecord } from "../../types/KeyGroupRecord";
+import { useApi } from "../../hooks/useApi";
 import KeyController from "./components/KeyController";
 import AddModal from "./components/AddModal";
 import DeleteModal from "./components/DeleteModal";
 import TransferModal from "./components/TransferModal";
 
 function Management() {
-  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [activeGroup, setActiveGroup] = useState<KeyGroupRecord | null>(null);
+  const [allGroups, setAllGroups] = useState<KeyGroupRecord[]>([]);
+  const [keysInGroup, setKeysInGroup] = useState<ApiKeyRecord[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isSwitching, setIsSwitching] = useState<boolean>(false);
+  const { request } = useApi();
+
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState<boolean>(false);
   const [isTransferModalOpen, setIsTransferModalOpen] =
@@ -17,77 +23,44 @@ function Management() {
   const [currentKey, setCurrentKey] = useState<ApiKeyRecord | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState<number>(0);
 
-  // Fetch groups
-  const { data: groups, loading: groupsLoading } = useApi<KeyGroupRecord[]>(
-    "/api/v1/admin/groups"
-  );
-
-  // Fetch keys when a group is selected
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const {
-    data: keys,
-    loading: keysLoading,
-    error: keysError,
-  } = useApi<ApiKeyRecord[]>(
-    selectedGroupId ? `/api/v1/admin/groups/${selectedGroupId}/keys` : null,
-    [refreshTrigger, selectedGroupId]
-  );
-
-  // useEffect(() => {
-  //   console.log('Selected Group ID:', selectedGroupId);
-  //   console.log('Keys:', keys);
-  // }, [selectedGroupId, keys]);
-
-  const handleAddNewKey = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const formData = new FormData(event.currentTarget);
-    const name = formData.get("name") as string;
-    const key = formData.get("key") as string;
-
-    if (!name || !key || !selectedGroupId) {
-      alert("請填寫所有欄位");
-      return;
-    }
-
+  const loadInitialData = useCallback(async () => {
+    setIsLoading(true);
     try {
-      const response = await fetch("/api/v1/admin/keys", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name,
-          api_key: key,
-          group_id: selectedGroupId,
-          rpd: 500,
-        }),
-      });
+      const [activeGroupData, allGroupsData] = await Promise.all([
+        request("/api/v1/admin/groups/active") as Promise<KeyGroupRecord>,
+        request("/api/v1/admin/groups") as Promise<KeyGroupRecord[]>,
+      ]);
 
-      if (!response.ok) {
-        throw new Error("無法新增金鑰");
+      setActiveGroup(activeGroupData);
+      setAllGroups(allGroupsData);
+
+      if (activeGroupData) {
+        const keysData = (await request(
+          `/api/v1/admin/groups/${activeGroupData.id}/keys`
+        )) as ApiKeyRecord[];
+        setKeysInGroup(keysData);
       }
-
-      setIsAddModalOpen(false);
-      setRefreshTrigger((prev) => prev + 1); // Trigger re-fetch
     } catch (error) {
-      console.error("新增金鑰失敗:", error);
-      alert(
-        `新增金鑰失敗: ${error instanceof Error ? error.message : "未知錯誤"}`
-      );
+      console.error("Failed to fetch initial data", error);
+    } finally {
+      setIsLoading(false);
     }
+  }, [request]);
+
+  useEffect(() => {
+    loadInitialData();
+  }, [refreshTrigger, loadInitialData]);
+  const refreshData = () => {
+    setRefreshTrigger((prev) => prev + 1);
   };
 
   const handleDeleteKey = async () => {
     if (!currentKey) return;
 
     try {
-      const response = await fetch(`/api/v1/admin/keys/${currentKey.id}`, {
+      await request(`/api/v1/admin/keys/${currentKey.id}`, {
         method: "DELETE",
       });
-
-      if (!response.ok) {
-        throw new Error("無法刪除金鑰");
-      }
 
       setIsDeleteModalOpen(false);
       setCurrentKey(null);
@@ -107,20 +80,12 @@ function Management() {
     }
 
     try {
-      const response = await fetch(`/api/v1/admin/keys/${currentKey.id}`, {
+      await request(`/api/v1/admin/keys/${currentKey.id}`, {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
+        body: {
           group_id: targetGroupId,
-        }),
+        },
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || "無法轉移金鑰");
-      }
 
       setIsTransferModalOpen(false);
       setCurrentKey(null);
@@ -134,30 +99,57 @@ function Management() {
     }
   };
 
-  useEffect(() => {
-    // Select the first group by default
-    if (groups && groups.length > 0 && !selectedGroupId) {
-      setSelectedGroupId(groups[0].id);
+  const handleGroupChange = async (
+    event: React.ChangeEvent<HTMLSelectElement>
+  ) => {
+    const groupId = event.target.value;
+    if (!groupId) return;
+
+    setIsSwitching(true);
+    try {
+      // Update active group on the server
+      await request("/api/v1/admin/groups/active", {
+        method: "PUT",
+        body: { id: groupId },
+      });
+
+      // Find the new active group from allGroups
+      const newActiveGroup = allGroups.find((group) => group.id === groupId);
+      if (newActiveGroup) {
+        setActiveGroup(newActiveGroup);
+        // Fetch keys for the new active group
+        const keysData = (await request(
+          `/api/v1/admin/groups/${newActiveGroup.id}/keys`
+        )) as ApiKeyRecord[];
+        setKeysInGroup(keysData);
+      }
+    } catch (error) {
+      console.error("Failed to switch group", error);
+      alert("切換群組失敗");
+    } finally {
+      setIsSwitching(false);
     }
-  }, [groups, selectedGroupId]);
+  };
 
   return (
     <div className="flex flex-col justify-center items-center p-6">
-      <h1 className="text-3xl font-black mb-4">金鑰與分組管理</h1>
-
+      <h1 className="text-3xl font-black mb-4">金鑰管理</h1>
+      <h2 className="text-xl font-bold mb-4">
+        當前作用中群組：{activeGroup ? activeGroup.name : "載入中..."}
+      </h2>
       {/* Group Selector */}
       <div className="mb-4">
         <label htmlFor="group-select" className="mr-2">
-          選擇群組:
+          切換群組:
         </label>
         <select
           id="group-select"
           className="bg-gray-700 text-white p-2 rounded"
-          value={selectedGroupId || ""}
-          onChange={(e) => setSelectedGroupId(e.target.value)}
-          disabled={groupsLoading}
+          value={activeGroup?.id || ""}
+          onChange={handleGroupChange}
+          disabled={isSwitching}
         >
-          {groups?.map((group) => (
+          {allGroups?.map((group) => (
             <option key={group.id} value={group.id}>
               {group.name}
             </option>
@@ -171,7 +163,7 @@ function Management() {
           <button
             onClick={() => setIsAddModalOpen(true)}
             className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded"
-            disabled={!selectedGroupId}
+            disabled={!activeGroup}
           >
             新增金鑰
           </button>
@@ -191,33 +183,22 @@ function Management() {
             </tr>
           </thead>
           <tbody className="bg-gray-800 divide-y divide-gray-700">
-            {keysLoading ? (
+            {isLoading ? (
               <tr>
                 <td colSpan={3} className="text-center py-4">
                   Loading keys...
                 </td>
               </tr>
-            ) : keysError ? (
-              <tr>
-                <td colSpan={3} className="text-center py-4 text-red-400">
-                  Error: {keysError.message}
-                </td>
-              </tr>
             ) : (
-              (() => {
-                // console.log('Keys:', keys)
-                return keys?.map((key) => {
-                  return (
-                    <KeyController
-                      key={key.id}
-                      keyData={key as ApiKeyRecord}
-                      setCurrentKey={setCurrentKey}
-                      setIsTransferModalOpen={setIsTransferModalOpen}
-                      setIsDeleteModalOpen={setIsDeleteModalOpen}
-                    />
-                  );
-                });
-              })()
+              keysInGroup.map((key) => (
+                <KeyController
+                  key={key.id}
+                  keyData={key}
+                  setCurrentKey={setCurrentKey}
+                  setIsTransferModalOpen={setIsTransferModalOpen}
+                  setIsDeleteModalOpen={setIsDeleteModalOpen}
+                />
+              ))
             )}
           </tbody>
         </table>
@@ -226,8 +207,9 @@ function Management() {
       {/* Add New Key Modal */}
       <AddModal
         setIsAddModalOpen={setIsAddModalOpen}
-        handleAddNewKey={handleAddNewKey}
+        refreshData={refreshData}
         showing={isAddModalOpen}
+        activeGroupId={activeGroup?.id || null}
       />
 
       {/* Delete Confirmation Modal */}
@@ -246,8 +228,8 @@ function Management() {
         setIsTransferModalOpen={setIsTransferModalOpen}
         setCurrentKey={setCurrentKey}
         setTargetGroupId={setTargetGroupId}
-        groups={groups || []}
-        selectedGroupId={selectedGroupId || ""}
+        groups={allGroups || []}
+        selectedGroupId={activeGroup?.id || ""}
         handleTransferKey={handleTransferKey}
         showing={isTransferModalOpen}
       />
