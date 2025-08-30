@@ -31,12 +31,17 @@ interface GlobalStats {
 interface ApiKey {
   id: string;
   name: string;
-  api_key: string; // Changed from 'key' to 'api_key'
-  is_enabled: boolean; // Added is_enabled
+  api_key: string;
+  is_enabled: boolean;
   lastUsed?: string;
   inputToken?: number;
   outputToken?: number;
   statusCode?: number;
+  lastStatus?: 'success' | 'failure';
+  lastPromptTokens?: number;
+  lastCompletionTokens?: number;
+  lastErrorCode?: string;
+  latency?: number;
 }
 
 interface OverviewUnitData {
@@ -66,6 +71,7 @@ interface KeyData {
   inputToken: number | null;
   outputToken: number | null;
   useTime: number | null;
+  latency: number | null;
   lastUsed: Date | null;
   quota: {
     rpm: number | null;
@@ -186,6 +192,17 @@ function Key(data: KeyData) {
           <span>
             O:
             {data.outputToken !== null ? `${Math.floor(data.outputToken/100)/10}k` : "N/A"}
+          </span>
+        </div>
+      </td>
+      <td className="px-6 py-2 whitespace-nowrap text-sm text-gray-400">
+        <div className="flex flex-col text-xs/4 font-mono">
+          <span>
+            {data.latency !== null && data.latency !== undefined ? ((time)=>{
+              if (time < 1000) return `${time}ms`;
+              else if (time < 10000) return `${(time/1000).toFixed(1)}s`;
+              else return `${Math.floor(time/1000)}s`;
+            })(data.latency) : "N/A"}
           </span>
         </div>
       </td>
@@ -313,6 +330,7 @@ function Dashboard() {
                   inputToken: usageRecord.promptTokens,
                   outputToken: usageRecord.completionTokens,
                   lastUsed: usageRecord.timestamp,
+                  latency: usageRecord.latency,
                 }
               : key
           )
@@ -337,16 +355,23 @@ function Dashboard() {
       }
     };
 
+    const handleGroupChange = () => {
+      console.log('Active group changed, refetching keys...');
+      fetchKeys("/api/v1/admin/keys");
+    };
+
     eventSource.addEventListener('key_usage_start', handleKeyUsageStart);
     eventSource.addEventListener('key_usage_end', handleKeyUsageEnd);
     eventSource.addEventListener('stats_update', handleStatsUpdate);
+    eventSource.addEventListener('active_group_changed', handleGroupChange);
 
     return () => {
       eventSource.removeEventListener('key_usage_start', handleKeyUsageStart);
       eventSource.removeEventListener('key_usage_end', handleKeyUsageEnd);
       eventSource.removeEventListener('stats_update', handleStatsUpdate);
+      eventSource.removeEventListener('active_group_changed', handleGroupChange);
     };
-  }, [eventSource]);
+  }, [eventSource, fetchKeys]);
 
   useEffect(() => {
     console.log(stats);
@@ -368,13 +393,13 @@ function Dashboard() {
           <OverviewUnit
             classname={"text-red-400"}
             title={"total input token"}
-            value={globalStats.totalInputTokens}
+            value={Math.floor(globalStats.totalInputTokens/1000)/10}
             unit={"M"}
           />
           <OverviewUnit
             classname={"text-yellow-400"}
             title={"total output token"}
-            value={globalStats.totalOutputTokens}
+            value={Math.floor(globalStats.totalOutputTokens/100)/10}
             unit={"k"}
           />
         </div>
@@ -395,6 +420,9 @@ function Dashboard() {
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                 Token
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                Latency
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                 Last Used
@@ -425,10 +453,11 @@ function Dashboard() {
                     apiKey={key.api_key}
                     keyId={key.id.toString()}
                     status={key.is_enabled ? "avaliable" : "disabled"} // 根據 is_enabled 判斷狀態
-                    statusCode={key.statusCode ?? null}
-                    inputToken={key.inputToken ?? null}
-                    outputToken={key.outputToken ?? null}
+                    statusCode={key.statusCode ?? (key.lastErrorCode ? parseInt(key.lastErrorCode) : (key.lastStatus === 'success' ? 200 : null))}
+                    inputToken={key.inputToken ?? key.lastPromptTokens ?? null}
+                    outputToken={key.outputToken ?? key.lastCompletionTokens ?? null}
                     useTime={null}
+                    latency={key.latency ?? null}
                     lastUsed={key.lastUsed ? new Date(key.lastUsed) : null}
                     quota={{ rpm: null, rpd: null, tpm: null }} // 這裡需要從後端獲取實際的 quota
                     pendingKeyIds={pendingKeyIds}

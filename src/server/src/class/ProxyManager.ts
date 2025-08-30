@@ -42,7 +42,6 @@ export default class ProxyManager {
 
     try {
       const result = await apiKey.sendRequest(modelId, req.body, isStreaming);
-      const latency = Date.now() - startTime;
 
       if (isStreaming) {
         result.usage
@@ -54,7 +53,7 @@ export default class ProxyManager {
               clientIdentifier: req.ip || null,
               modelId,
               status: "success",
-              latency,
+              latency: Date.now() - startTime,
               promptTokens: usage.inputTokens ?? null,
               completionTokens: usage.outputTokens ?? null,
               totalTokens: usage.totalTokens ?? null,
@@ -82,7 +81,7 @@ export default class ProxyManager {
           clientIdentifier: req.ip || null,
           modelId,
           status: "success",
-          latency,
+          latency: Date.now() - startTime,
           promptTokens: usage.inputTokens ?? null,
           completionTokens: usage.outputTokens ?? null,
           totalTokens: usage.totalTokens ?? null,
@@ -98,22 +97,21 @@ export default class ProxyManager {
 
       return result;
     } catch (error: any) {
-      const latency = Date.now() - startTime;
       const record: UsageRecord = {
         requestId,
         apiKeyId: apiKey.id,
         keyGroupId: groupId,
         clientIdentifier: req.ip || null,
         modelId,
-        status: 'failure',
-        latency,
+        status: "failure",
+        latency: Date.now() - startTime,
         promptTokens: null,
         completionTokens: null,
         totalTokens: null,
         estimatedCost: 0,
         timestamp: new Date(startTime).toISOString(),
         errorCode: String(error.statusCode) || null,
-        errorMessage: error.message || 'An unknown error occurred',
+        errorMessage: error.message || "An unknown error occurred",
       };
       await dbService.addUsageRecord(record);
       broadcastSseEvent('key_usage_end', record);

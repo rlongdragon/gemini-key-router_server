@@ -1,4 +1,5 @@
 import { NextFunction, Request, Response } from 'express';
+import { broadcastSseEvent } from './sse.controller';
 import { groupManagementService } from '../services/group-management.service';
 
 export class GroupController {
@@ -36,9 +37,13 @@ export class GroupController {
 
   static async setActiveGroup(req: Request, res: Response, next: NextFunction) {
     try {
-      const { id } = req.body;
-      await groupManagementService.setActiveGroup(id);
-      res.status(200).json({ message: 'Active group set successfully' });
+      const { groupId } = req.body;
+      if (!groupId) {
+        return res.status(400).json({ message: 'Group ID is required.' });
+      }
+      await groupManagementService.setActiveGroup(groupId);
+      broadcastSseEvent('active_group_changed', { groupId });
+      res.status(200).json({ message: 'Active group updated successfully.' });
     } catch (error) {
       next(error);
     }

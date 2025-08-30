@@ -13,7 +13,7 @@ import crypto from "crypto";
 interface Config {
   database: {
     path: string;
-    retentionDays: number;
+    retentionHours: number;
   };
 }
 
@@ -47,7 +47,10 @@ export class DatabaseService {
 
     // Initialize the database
     this.runMigrations();
+    // Run cleanup once on startup
     this.cleanupOldRecords();
+    // Schedule cleanup to run every hour
+    setInterval(() => this.cleanupOldRecords(), 60 * 60 * 1000);
   }
 
   public static getInstance(): DatabaseService {
@@ -103,18 +106,27 @@ export class DatabaseService {
       "config.json"
     );
     const config: Config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-    const retentionDays = config.database.retentionDays;
+    const retentionHours = config.database.retentionHours;
 
-    if (retentionDays > 0) {
+    if (retentionHours > 0) {
       const cutoffDate = new Date();
-      cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+      cutoffDate.setHours(cutoffDate.getHours() - retentionHours);
       const isoString = cutoffDate.toISOString();
 
-      const stmt = this.db.prepare(
-        `DELETE FROM usage_history WHERE timestamp < ?`
-      );
+      const stmt = this.db.prepare(`
+        DELETE FROM usage_history
+        WHERE timestamp < ?
+          AND id NOT IN (
+            SELECT id
+            FROM (
+              SELECT id, ROW_NUMBER() OVER(PARTITION BY apiKeyId ORDER BY timestamp DESC) as rn
+              FROM usage_history
+            )
+            WHERE rn = 1
+          )
+      `);
       const result = stmt.run(isoString);
-      console.log(`Cleaned up ${result.changes} old records.`);
+      console.log(`Cleaned up ${result.changes} old records, keeping the last known state for each key.`);
     }
   }
 
@@ -178,6 +190,26 @@ export class DatabaseService {
       "SELECT * FROM usage_history ORDER BY timestamp DESC LIMIT ?"
     );
     return stmt.all(limit) as UsageRecord[];
+  }
+
+  public getTokenUsageStats(): { totalRequests: number; totalInputTokens: number; totalOutputTokens: number } {
+    const twentyFourHoursAgo = new Date(
+      Date.now() - 24 * 60 * 60 * 1000
+    ).toISOString();
+    const stmt = this.db.prepare(
+      `SELECT
+        COUNT(*) as totalRequests,
+        SUM(promptTokens) as totalInputTokens,
+        SUM(completionTokens) as totalOutputTokens
+      FROM usage_history
+      WHERE timestamp >= ?`
+    );
+    const result = stmt.get(twentyFourHoursAgo) as { totalRequests: number; totalInputTokens: number | null; totalOutputTokens: number | null };
+    return {
+      totalRequests: result?.totalRequests || 0,
+      totalInputTokens: result?.totalInputTokens || 0,
+      totalOutputTokens: result?.totalOutputTokens || 0,
+    };
   }
 
   public createUsageHistory(
@@ -253,20 +285,23 @@ export class DatabaseService {
   }
 
   public getKeysByGroupId(groupId: string): ApiKeyRecord[] {
-    try {
-      console.log(`#YJD6 getKeysByGroupId: ${groupId}`);
-      // get db file path absolute path
-      // const dbFilePath = path.resolve(this.db.filename);
-      // console.log(`##YJD6-1 Database file path: ${dbFilePath}`);
-
-      const stmt = this.db.prepare("SELECT * FROM api_keys WHERE group_id = ?");
-      console.log(`#YJD6-1 group_id: [${groupId}]`);
-      console.log(`#YJD6-2 find ${stmt.all(groupId).length} keys`);
-      return stmt.all(groupId) as ApiKeyRecord[];
-    } catch (error) {
-      console.error(`Error fetching keys for group ${groupId}:`, error);
-      throw new Error("Failed to retrieve keys from database.");
-    }
+    const stmt = this.db.prepare(`
+      SELECT
+        k.*,
+        uh.timestamp as lastUsed,
+        uh.status as lastStatus,
+        uh.promptTokens as lastPromptTokens,
+        uh.completionTokens as lastCompletionTokens,
+        uh.totalTokens as lastTotalTokens,
+        uh.errorCode as lastErrorCode
+      FROM api_keys k
+      LEFT JOIN (
+        SELECT *, ROW_NUMBER() OVER(PARTITION BY apiKeyId ORDER BY timestamp DESC) as rn
+        FROM usage_history
+      ) uh ON k.id = uh.apiKeyId AND uh.rn = 1
+      WHERE k.group_id = ?
+    `);
+    return stmt.all(groupId) as ApiKeyRecord[];
   }
 
   public deleteKey(id: string): void {

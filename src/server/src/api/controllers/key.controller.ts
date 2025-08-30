@@ -1,11 +1,22 @@
 import { NextFunction, Request, Response } from 'express';
 import { keyManagementService } from '../services/key-management.service';
+import { dbService } from '../../services/DatabaseService';
 
 export class KeyController {
   static async getKeys(req: Request, res: Response, next: NextFunction) {
     try {
-      const keys = await keyManagementService.getKeys();
-      res.json(keys);
+      const activeGroup = dbService.getActiveGroup();
+      if (!activeGroup) {
+        return res.json([]);
+      }
+      const keys = dbService.getKeysByGroupId(activeGroup.id);
+      const maskedKeys = keys.map((key) => ({
+        ...key,
+        api_key: `${key.api_key.substring(0, 4)}...${key.api_key.substring(
+          key.api_key.length - 4,
+        )}`,
+      }));
+      res.json(maskedKeys);
     } catch (error) {
       next(error);
     }
