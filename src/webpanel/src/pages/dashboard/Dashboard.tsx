@@ -9,11 +9,34 @@ interface Stats {
   totalLimit: number;
 }
 
+interface UsageRecord {
+  requestId: string;
+  apiKeyId: string;
+  status: number;
+  latency: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  timestamp: string;
+  errorCode: string | null;
+  errorMessage: string | null;
+}
+
+interface GlobalStats {
+  totalRequests: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+}
+
 interface ApiKey {
-  id: number;
+  id: string;
   name: string;
   api_key: string; // Changed from 'key' to 'api_key'
   is_enabled: boolean; // Added is_enabled
+  lastUsed?: string;
+  inputToken?: number;
+  outputToken?: number;
+  statusCode?: number;
 }
 
 interface OverviewUnitData {
@@ -39,7 +62,7 @@ interface KeyData {
   apiKey: string;
   keyId: string;
   status: "avaliable" | "disabled" | "using" | "faild";
-  statusCode: 200 | 400 | 429 | 500 | null;
+  statusCode: number | null;
   inputToken: number | null;
   outputToken: number | null;
   useTime: number | null;
@@ -49,7 +72,7 @@ interface KeyData {
     rpd: number | null;
     tpm: number | null;
   };
-  pendingKeyIds: Set<number>;
+  pendingKeyIds: Set<string>;
 }
 
 function Key(data: KeyData) {
@@ -118,7 +141,7 @@ function Key(data: KeyData) {
     <tr
       className={`hover:bg-gray-700 ${
         data.status === "disabled" ? "opacity-50" : ""
-      } ${data.pendingKeyIds.has(parseInt(data.keyId)) ? styles.pendingGlow : ""}`}
+      } ${data.pendingKeyIds.has(data.keyId) ? styles.scanner : ""}`}
     >
       <td className="px-6 py-2 whitespace-nowrap text-sm font-medium text-gray-300 font-mono">
         {data.apiKey}
@@ -158,11 +181,11 @@ function Key(data: KeyData) {
         <div className="flex flex-col text-xs/4 font-mono">
           <span>
             I:
-            {data.inputToken !== null ? `${data.inputToken}M` : "N/A"}
+            {data.inputToken !== null ? `${Math.floor(data.inputToken/100)/10}k` : "N/A"}
           </span>
           <span>
             O:
-            {data.outputToken !== null ? `${data.outputToken}k` : "N/A"}
+            {data.outputToken !== null ? `${Math.floor(data.outputToken/100)/10}k` : "N/A"}
           </span>
         </div>
       </td>
@@ -238,7 +261,12 @@ function Dashboard() {
   const { data: initialKeys, loading: keysLoading, error: keysError, request: fetchKeys } = useApi<ApiKey[]>();
   const eventSource = useSse("/api/v1/admin/status-stream");
   const [keys, setKeys] = useState<ApiKey[]>([]);
-  const [pendingKeyIds, setPendingKeyIds] = useState(new Set<number>());
+  const [pendingKeyIds, setPendingKeyIds] = useState(new Set<string>());
+  const [globalStats, setGlobalStats] = useState<GlobalStats>({
+    totalRequests: 0,
+    totalInputTokens: 0,
+    totalOutputTokens: 0,
+  });
 
   useEffect(() => {
     fetchStats("/api/v1/admin/stats");
@@ -252,29 +280,72 @@ function Dashboard() {
   }, [initialKeys]);
 
   useEffect(() => {
-    if (eventSource) {
-      const handleKeyUsageStart = (event: MessageEvent) => {
-        const data = JSON.parse(event.data);
-        setPendingKeyIds((prev) => new Set(prev).add(data.keyId));
-      };
+    if (!eventSource) return;
 
-      const handleKeyUsageEnd = (event: MessageEvent) => {
+    const handleKeyUsageStart = (event: MessageEvent) => {
+      try {
         const data = JSON.parse(event.data);
-        setPendingKeyIds((prev) => {
-          const newSet = new Set(prev);
-          newSet.delete(data.keyId);
+        const keyId = data.keyId;
+        console.log("Key usage started for keyId:", keyId);
+        if (keyId) {
+          setPendingKeyIds((prevSet) => {
+            const newSet = new Set(prevSet);
+            newSet.add(keyId);
+            return newSet;
+          });
+        }
+      } catch (error) {
+        console.error("Failed to parse key_usage_start event:", error);
+      }
+    };
+    const handleKeyUsageEnd = (event: MessageEvent) => {
+      try {
+        const usageRecord: UsageRecord = JSON.parse(event.data);
+        const { apiKeyId } = usageRecord;
+
+        // Update the specific key's details
+        setKeys((prevKeys) =>
+          prevKeys.map((key) =>
+            key.id === apiKeyId
+              ? {
+                  ...key,
+                  statusCode: usageRecord.errorCode ? parseInt(usageRecord.errorCode) : 200,
+                  inputToken: usageRecord.promptTokens,
+                  outputToken: usageRecord.completionTokens,
+                  lastUsed: usageRecord.timestamp,
+                }
+              : key
+          )
+        );
+
+        // Remove the keyId from the pending set
+        setPendingKeyIds((prevSet) => {
+          const newSet = new Set(prevSet);
+          newSet.delete(apiKeyId);
           return newSet;
         });
-      };
+      } catch (error) {
+        console.error("Failed to parse key_usage_end event:", error);
+      }
+    };
+    const handleStatsUpdate = (event: MessageEvent) => {
+      try {
+        const newStats: GlobalStats = JSON.parse(event.data);
+        setGlobalStats(newStats);
+      } catch (error) {
+        console.error("Failed to parse stats_update event:", error);
+      }
+    };
 
-      eventSource.addEventListener('key_usage_start', handleKeyUsageStart);
-      eventSource.addEventListener('key_usage_end', handleKeyUsageEnd);
+    eventSource.addEventListener('key_usage_start', handleKeyUsageStart);
+    eventSource.addEventListener('key_usage_end', handleKeyUsageEnd);
+    eventSource.addEventListener('stats_update', handleStatsUpdate);
 
-      return () => {
-        eventSource.removeEventListener('key_usage_start', handleKeyUsageStart);
-        eventSource.removeEventListener('key_usage_end', handleKeyUsageEnd);
-      };
-    }
+    return () => {
+      eventSource.removeEventListener('key_usage_start', handleKeyUsageStart);
+      eventSource.removeEventListener('key_usage_end', handleKeyUsageEnd);
+      eventSource.removeEventListener('stats_update', handleStatsUpdate);
+    };
   }, [eventSource]);
 
   useEffect(() => {
@@ -291,19 +362,19 @@ function Dashboard() {
           <OverviewUnit
             classname={"text-blue-400"}
             title={"total request"}
-            value={360}
+            value={globalStats.totalRequests}
             unit={""}
           />
           <OverviewUnit
             classname={"text-red-400"}
             title={"total input token"}
-            value={140}
+            value={globalStats.totalInputTokens}
             unit={"M"}
           />
           <OverviewUnit
             classname={"text-yellow-400"}
             title={"total output token"}
-            value={2000}
+            value={globalStats.totalOutputTokens}
             unit={"k"}
           />
         </div>
@@ -354,11 +425,11 @@ function Dashboard() {
                     apiKey={key.api_key}
                     keyId={key.id.toString()}
                     status={key.is_enabled ? "avaliable" : "disabled"} // 根據 is_enabled 判斷狀態
-                    statusCode={null} // 這裡需要從後端獲取實際的狀態碼，目前暫時設為 null
-                    inputToken={null} // 這裡需要從後端獲取實際的 inputToken
-                    outputToken={null} // 這裡需要從後端獲取實際的 outputToken
-                    useTime={null} // 這裡需要從後端獲取實際的 useTime
-                    lastUsed={null} // 這裡需要從後端獲取實際的 lastUsed
+                    statusCode={key.statusCode ?? null}
+                    inputToken={key.inputToken ?? null}
+                    outputToken={key.outputToken ?? null}
+                    useTime={null}
+                    lastUsed={key.lastUsed ? new Date(key.lastUsed) : null}
                     quota={{ rpm: null, rpd: null, tpm: null }} // 這裡需要從後端獲取實際的 quota
                     pendingKeyIds={pendingKeyIds}
                   />

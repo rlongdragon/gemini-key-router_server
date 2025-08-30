@@ -1,9 +1,11 @@
+
 import { Request } from 'express';
 import { randomUUID } from 'crypto';
 import ApiKeysManager from "./ApiKeysManager";
 import { dbService } from '../services/DatabaseService';
 import { UsageRecord } from '../types/database';
 import { broadcastSseEvent } from '../api/controllers/sse.controller';
+import { statsService } from '../api/services/stats.service';
 import { LanguageModelUsage } from 'ai';
 
 export default class ProxyManager {
@@ -41,11 +43,10 @@ export default class ProxyManager {
     try {
       const result = await apiKey.sendRequest(modelId, req.body, isStreaming);
       const latency = Date.now() - startTime;
-      broadcastSseEvent('key_usage_end', { keyId: apiKey.id });
 
       if (isStreaming) {
         result.usage
-          .then((usage: LanguageModelUsage) => {
+          .then(async (usage: LanguageModelUsage) => {
             const record: UsageRecord = {
               requestId,
               apiKeyId: apiKey.id,
@@ -62,7 +63,9 @@ export default class ProxyManager {
               errorCode: null,
               errorMessage: null,
             };
-            dbService.addUsageRecord(record);
+            await dbService.addUsageRecord(record);
+            broadcastSseEvent('key_usage_end', record);
+            await statsService.broadcastStatsUpdate();
           })
           .catch((error: any) => {
             console.error(
@@ -89,12 +92,13 @@ export default class ProxyManager {
           errorMessage: null,
         };
         await dbService.addUsageRecord(record);
+        broadcastSseEvent('key_usage_end', record);
+        await statsService.broadcastStatsUpdate();
       }
 
       return result;
     } catch (error: any) {
       const latency = Date.now() - startTime;
-      broadcastSseEvent('key_usage_end', { keyId: apiKey.id });
       const record: UsageRecord = {
         requestId,
         apiKeyId: apiKey.id,
@@ -112,6 +116,8 @@ export default class ProxyManager {
         errorMessage: error.message || 'An unknown error occurred',
       };
       await dbService.addUsageRecord(record);
+      broadcastSseEvent('key_usage_end', record);
+      await statsService.broadcastStatsUpdate();
       throw error;
     }
   }

@@ -1,5 +1,6 @@
 import { dbService } from '../../services/DatabaseService';
 import { EventEmitter } from 'events';
+import { broadcastSseEvent } from '../controllers/sse.controller';
 import { UsageHistoryRecord } from '../../types/database';
 
 class StatsService extends EventEmitter {
@@ -26,6 +27,11 @@ class StatsService extends EventEmitter {
   ): Promise<void> {
     const newUsage = await dbService.createUsageHistory(usage);
     this.emit('new_usage', newUsage);
+  }
+
+  public async broadcastStatsUpdate(): Promise<void> {
+    const stats = await this.getGlobalStats();
+    broadcastSseEvent('stats_update', stats);
   }
 }
 
