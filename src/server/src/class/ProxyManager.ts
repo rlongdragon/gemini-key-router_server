@@ -16,8 +16,8 @@ export default class ProxyManager {
   }
 
   public static async createInstance(): Promise<ProxyManager> {
-    const apiKeysManager = new ApiKeysManager();
-    await apiKeysManager.loadKeysFromDb();
+    const apiKeysManager = ApiKeysManager.getInstance();
+    await apiKeysManager.reloadKeys();
     return new ProxyManager(apiKeysManager);
   }
 
@@ -58,7 +58,7 @@ export default class ProxyManager {
               completionTokens: usage.outputTokens ?? null,
               totalTokens: usage.totalTokens ?? null,
               estimatedCost: 0, // Placeholder
-              timestamp: new Date(startTime).toISOString(),
+              timestamp: new Date().toISOString(),
               errorCode: null,
               errorMessage: null,
             };
@@ -86,7 +86,7 @@ export default class ProxyManager {
           completionTokens: usage.outputTokens ?? null,
           totalTokens: usage.totalTokens ?? null,
           estimatedCost: 0, // Placeholder
-          timestamp: new Date(startTime).toISOString(),
+          timestamp: new Date().toISOString(),
           errorCode: null,
           errorMessage: null,
         };
@@ -109,7 +109,7 @@ export default class ProxyManager {
         completionTokens: null,
         totalTokens: null,
         estimatedCost: 0,
-        timestamp: new Date(startTime).toISOString(),
+        timestamp: new Date().toISOString(),
         errorCode: String(error.statusCode) || null,
         errorMessage: error.message || "An unknown error occurred",
       };

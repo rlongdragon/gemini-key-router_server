@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from 'express';
 import { keyManagementService } from '../services/key-management.service';
 import { dbService } from '../../services/DatabaseService';
+import ApiKeysManager from '../../class/ApiKeysManager';
 
 export class KeyController {
   static async getKeys(req: Request, res: Response, next: NextFunction) {
@@ -31,6 +32,7 @@ export class KeyController {
         return res.status(400).json({ message: 'api_key and group_id are required' });
       }
       await keyManagementService.createKey({ name, api_key, group_id, rpd, is_enabled });
+      await ApiKeysManager.getInstance().reloadKeys();
       res.status(201).json({ message: 'Key created successfully' });
     } catch (error) {
       next(error);
@@ -40,8 +42,9 @@ export class KeyController {
   static async updateKey(req: Request, res: Response, next: NextFunction) {
     try {
       const { keyId } = req.params;
-      const { name, api_key, group_id, rpd, is_enabled } = req.body;
-      await keyManagementService.updateKey(keyId, { name, api_key, group_id, rpd, is_enabled });
+      const updateData = req.body;
+      await keyManagementService.updateKey(keyId, updateData);
+      await ApiKeysManager.getInstance().reloadKeys();
       res.json({ message: 'Key updated successfully' });
     } catch (error) {
       next(error);
@@ -52,6 +55,7 @@ export class KeyController {
     try {
       const { keyId } = req.params;
       await keyManagementService.deleteKey(keyId);
+      await ApiKeysManager.getInstance().reloadKeys();
       res.json({ message: 'Key deleted successfully' });
     } catch (error) {
       next(error);

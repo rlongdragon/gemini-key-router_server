@@ -48,14 +48,22 @@ class ApiKeyGroup {
 }
 
 class ApiKeysManager {
+  private static instance: ApiKeysManager;
   public curentGroupId: string | null = null;
   private apiKeyGroups: Map<string, ApiKeyGroup>;
 
-  constructor() {
+  private constructor() {
     this.apiKeyGroups = new Map();
   }
 
-  public async loadKeysFromDb(): Promise<void> {
+  public static getInstance(): ApiKeysManager {
+    if (!ApiKeysManager.instance) {
+      ApiKeysManager.instance = new ApiKeysManager();
+    }
+    return ApiKeysManager.instance;
+  }
+
+  public async reloadKeys(): Promise<void> {
     const activeGroupId = await dbService.getSetting('active_group_id') || 'default';
     this.curentGroupId = activeGroupId;
 

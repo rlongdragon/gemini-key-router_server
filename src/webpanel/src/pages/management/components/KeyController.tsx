@@ -1,12 +1,15 @@
 import React from "react";
 
+import { useApi } from "../../../hooks/useApi";
 import type { ApiKeyRecord } from "../../../types/ApiKeyRecord";
+import ToggleSwitch from "./ToggleSwitch";
 
 interface KeyControllerProps {
   setCurrentKey: React.Dispatch<React.SetStateAction<ApiKeyRecord | null>>;
   setIsTransferModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setIsDeleteModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
   keyData: ApiKeyRecord;
+  refreshData: () => void;
 }
 
 export default function KeyController({
@@ -14,8 +17,24 @@ export default function KeyController({
   setIsTransferModalOpen,
   setIsDeleteModalOpen,
   keyData: key,
+  refreshData,
 }: KeyControllerProps) {
-  // console.log("Rendering key:", key);
+  const { request } = useApi();
+  const handleToggle = async () => {
+    try {
+      await request(`/api/v1/admin/keys/${key.id}`, {
+        method: "PUT",
+        body: {
+          is_enabled: !key.is_enabled,
+        },
+      });
+      refreshData();
+    } catch (error) {
+      console.error("Failed to toggle key status", error);
+      alert("更新金鑰狀態失敗");
+    }
+  };
+
   return (
     <tr key={key.id}>
       <td className="px-6 py-4 whitespace-nowrap">{key.name}</td>
@@ -25,6 +44,9 @@ export default function KeyController({
               key.api_key.length - 4
             )}`
           : "N/A"}
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap">
+        <ToggleSwitch checked={key.is_enabled} onChange={handleToggle} />
       </td>
       <td className="px-6 py-4 whitespace-nowrap space-x-2">
         <button

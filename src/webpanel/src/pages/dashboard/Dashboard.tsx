@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { useApi } from "../../hooks/useApi";
 import { useSse } from "../../hooks/useSse";
+import TimestampDisplay from "./components/TimestampDisplay";
 import styles from "./Dashboard.module.css";
 
 interface Stats {
-  totalKeys: number;
-  totalUsage: number;
-  totalLimit: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalRequests: number;
 }
 
 interface UsageRecord {
@@ -47,7 +48,7 @@ interface ApiKey {
 interface OverviewUnitData {
   title: string;
   classname: string;
-  value: number;
+  value: number | string;
   unit: string;
 }
 
@@ -55,7 +56,7 @@ function OverviewUnit(data: OverviewUnitData) {
   return (
     <div className="flex flex-col items-center">
       <div className={`text-[4em]/15 font-mono ${data.classname} mb-0`}>
-        {data.value}
+        <span className="animate-fade-in">{data.value}</span>
         {data.unit}
       </div>
       <div>{data.title}</div>
@@ -79,6 +80,7 @@ interface KeyData {
     tpm: number | null;
   };
   pendingKeyIds: Set<string>;
+  className?: string;
 }
 
 function Key(data: KeyData) {
@@ -145,7 +147,7 @@ function Key(data: KeyData) {
 
   return (
     <tr
-      className={`hover:bg-gray-700 ${
+      className={`hover:bg-gray-800 ${
         data.status === "disabled" ? "opacity-50" : ""
       } ${data.pendingKeyIds.has(data.keyId) ? styles.scanner : ""}`}
     >
@@ -187,16 +189,16 @@ function Key(data: KeyData) {
         <div className="flex flex-col text-xs/4 font-mono">
           <span>
             I:
-            {data.inputToken !== null ? `${Math.floor(data.inputToken/100)/10}k` : "N/A"}
+            {data.inputToken !== null ? `${(data.inputToken/1000).toFixed(1)}k` : "N/A"}
           </span>
           <span>
             O:
-            {data.outputToken !== null ? `${Math.floor(data.outputToken/100)/10}k` : "N/A"}
+            {data.outputToken !== null ? `${(data.outputToken/1000).toFixed(1)}k` : "N/A"}
           </span>
         </div>
       </td>
       <td className="px-6 py-2 whitespace-nowrap text-sm text-gray-400">
-        <div className="flex flex-col text-xs/4 font-mono">
+        <div className="flex ㄉㄧflex-col text-xs/4 font-mono">
           <span>
             {data.latency !== null && data.latency !== undefined ? ((time)=>{
               if (time < 1000) return `${time}ms`;
@@ -216,63 +218,6 @@ function Key(data: KeyData) {
   );
 }
 
-interface TimestampDisplayProps {
-  date: Date;
-}
-
-const formatTimeAgo = (date: Date): string => {
-  const now = new Date();
-  const seconds = Math.max(
-    0,
-    Math.floor((now.getTime() - date.getTime()) / 1000)
-  );
-
-  if (seconds < 60) {
-    return `${seconds} sec ago`;
-  }
-
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) {
-    return `${minutes} min ago`;
-  }
-
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) {
-    return `${hours} hour(s) ago`;
-  }
-
-  const days = Math.floor(hours / 24);
-  if (days < 30) {
-    return `${days} day(s) ago`;
-  }
-
-  const months = Math.floor(days / 30); // Approximate months
-  if (months < 12) {
-    return `${months} month(s) ago`;
-  }
-
-  const years = Math.floor(days / 365); // Approximate years
-  return `${years} year(s) ago`;
-};
-
-const TimestampDisplay: React.FC<TimestampDisplayProps> = ({ date }) => {
-  const [displayTime, setDisplayTime] = useState('');
-
-  useEffect(() => {
-    if (date instanceof Date && !isNaN(date.getTime())) {
-      setDisplayTime(formatTimeAgo(date));
-      const timer = setInterval(() => {
-        setDisplayTime(formatTimeAgo(date));
-      }, 1000);
-      return () => clearInterval(timer);
-    } else {
-      setDisplayTime('Invalid date');
-    }
-  }, [date]);
-
-  return <span>{displayTime}</span>;
-};
-
 function Dashboard() {
   const { data: stats, loading: statsLoading, request: fetchStats } = useApi<Stats>();
   const { data: initialKeys, loading: keysLoading, error: keysError, request: fetchKeys } = useApi<ApiKey[]>();
@@ -284,6 +229,7 @@ function Dashboard() {
     totalInputTokens: 0,
     totalOutputTokens: 0,
   });
+  const [justUpdatedKeyIds, setJustUpdatedKeyIds] = useState(new Set<string>());
 
   useEffect(() => {
     fetchStats("/api/v1/admin/stats");
@@ -342,6 +288,20 @@ function Dashboard() {
           newSet.delete(apiKeyId);
           return newSet;
         });
+
+        setJustUpdatedKeyIds((prevSet) => {
+          const newSet = new Set(prevSet);
+          newSet.add(apiKeyId);
+          return newSet;
+        });
+
+        setTimeout(() => {
+          setJustUpdatedKeyIds((prevSet) => {
+            const newSet = new Set(prevSet);
+            newSet.delete(apiKeyId);
+            return newSet;
+          });
+        }, 500);
       } catch (error) {
         console.error("Failed to parse key_usage_end event:", error);
       }
@@ -375,6 +335,10 @@ function Dashboard() {
 
   useEffect(() => {
     console.log(stats);
+    if (statsLoading || !stats) return;
+    setGlobalStats({
+      ...stats
+    });
   }, [statsLoading]);
 
   return (
@@ -383,7 +347,7 @@ function Dashboard() {
         <h1 className="text-3xl font-black">Dashboard</h1>
       </div>
       <div>
-        <div className="flex my-4 gap-10">
+        <div className="flex my-4 gap-10" key={globalStats.totalRequests}>
           <OverviewUnit
             classname={"text-blue-400"}
             title={"total request"}
@@ -393,21 +357,21 @@ function Dashboard() {
           <OverviewUnit
             classname={"text-red-400"}
             title={"total input token"}
-            value={Math.floor(globalStats.totalInputTokens/1000)/10}
+            value={(globalStats.totalInputTokens/1000).toFixed(1)}
             unit={"M"}
           />
           <OverviewUnit
             classname={"text-yellow-400"}
             title={"total output token"}
-            value={Math.floor(globalStats.totalOutputTokens/100)/10}
+            value={(globalStats.totalOutputTokens/100).toFixed(1)}
             unit={"k"}
           />
         </div>
       </div>
-      <div className="w-full max-w-6xl bg-gray-800 p-6 rounded-lg shadow-lg">
+      <div className="w-full max-w-6xl bg-gray-900 border-gray-700 border-1 p-6 rounded-lg shadow-lg">
         <h2 className="text-xl font-black">Key Status</h2>
         <table className="min-w-full divide-y divide-gray-700">
-          <thead className="bg-gray-800">
+          <thead className="">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                 Key
@@ -432,7 +396,7 @@ function Dashboard() {
               </th>
             </tr>
           </thead>
-          <tbody className="bg-gray-800 divide-y divide-gray-700">
+          <tbody className="divide-y divide-gray-700">
             {keysLoading ? (
               <tr>
                 <td colSpan={5} className="text-center py-4 text-gray-400">
@@ -454,6 +418,7 @@ function Dashboard() {
                     keyId={key.id.toString()}
                     status={key.is_enabled ? "avaliable" : "disabled"} // 根據 is_enabled 判斷狀態
                     statusCode={key.statusCode ?? (key.lastErrorCode ? parseInt(key.lastErrorCode) : (key.lastStatus === 'success' ? 200 : null))}
+                    className={justUpdatedKeyIds.has(key.id) ? "animate-fade-in" : ""}
                     inputToken={key.inputToken ?? key.lastPromptTokens ?? null}
                     outputToken={key.outputToken ?? key.lastCompletionTokens ?? null}
                     useTime={null}

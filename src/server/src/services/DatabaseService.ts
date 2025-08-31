@@ -270,8 +270,14 @@ export class DatabaseService {
     id: string,
     data: Partial<Omit<ApiKeyRecord, "id" | "created_at">>
   ): void {
-    const fields = Object.keys(data);
-    const values = Object.values(data);
+    const updateData = { ...data };
+
+    if ("is_enabled" in updateData && typeof updateData.is_enabled === "boolean") {
+      updateData.is_enabled = updateData.is_enabled ? 1 : 0;
+    }
+
+    const fields = Object.keys(updateData);
+    const values = Object.values(updateData);
 
     if (fields.length === 0) {
       return;

@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from 'express';
 import { broadcastSseEvent } from './sse.controller';
 import { groupManagementService } from '../services/group-management.service';
+import ApiKeysManager from '../../class/ApiKeysManager';
 
 export class GroupController {
   static async getAllGroups(req: Request, res: Response, next: NextFunction) {
@@ -42,6 +43,7 @@ export class GroupController {
         return res.status(400).json({ message: 'Group ID is required.' });
       }
       await groupManagementService.setActiveGroup(groupId);
+      ApiKeysManager.getInstance().reloadKeys();
       broadcastSseEvent('active_group_changed', { groupId });
       res.status(200).json({ message: 'Active group updated successfully.' });
     } catch (error) {
