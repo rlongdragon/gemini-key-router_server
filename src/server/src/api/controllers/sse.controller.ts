@@ -1,5 +1,14 @@
 import { Request, Response } from 'express';
-import { keyStatusService } from '../../services/KeyStatusService';
+import { statsService } from '../services/stats.service';
+
+const clients: Response[] = [];
+
+export const broadcastSseEvent = (eventName: string, data: unknown) => {
+  clients.forEach((client) => {
+    client.write(`event: ${eventName}\n`);
+    client.write(`data: ${JSON.stringify(data)}\n\n`);
+  });
+};
 
 export class SseController {
   public static streamStatus(req: Request, res: Response): void {
@@ -8,14 +17,22 @@ export class SseController {
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders();
 
-    const eventHandler = (data: { keyId: string; status: string }) => {
+    clients.push(res);
+
+    const sendEvent = (eventName: string, data: unknown) => {
+      res.write(`event: ${eventName}\n`);
       res.write(`data: ${JSON.stringify(data)}\n\n`);
     };
 
-    keyStatusService.on('key_status_update', eventHandler);
+    const newUsageHandler = (data: unknown) => {
+      sendEvent('new_usage', data);
+    };
+
+    statsService.on('new_usage', newUsageHandler);
 
     req.on('close', () => {
-      keyStatusService.off('key_status_update', eventHandler);
+      clients.splice(clients.indexOf(res), 1);
+      statsService.off('new_usage', newUsageHandler);
     });
   }
 }

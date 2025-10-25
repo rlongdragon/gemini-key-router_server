@@ -7,6 +7,9 @@ import cors from 'cors';
 const app = express();
 const port = process.env.PORT || 5000;
 
+app.use(express.json({ limit: "8mb" }));
+app.use(express.urlencoded({ extended: true, limit: "8mb" }));
+
 async function startServer() {
   // 初始化 ProxyManager
   const proxyManager = await ProxyManager.createInstance();
@@ -20,6 +23,7 @@ async function startServer() {
     /^\/v1beta\/models\/(?<modelId>[^/]+):(generateContent|streamGenerateContent)$/,
     async (req: Request, res: Response) => {
       const isStreaming = req.path.includes(':streamGenerateContent');
+      console.log(`#6JSY Received request for model: ${req.params.modelId}, streaming: ${isStreaming}`);
       try {
         const result = await proxyManager.proxy(req);
 
@@ -43,7 +47,7 @@ async function startServer() {
           res.status(503).json({ error: error.message });
         } else {
           console.error(error);
-          res.status(500).json({ error: 'Failed to proxy request' });
+          res.status(500).json({ error: 'Failed to proxy request', errorMessage: error.message });
         }
       }
     }

@@ -25,6 +25,9 @@ class ApiKeyGroup {
   }
 
   public getNextAvailableKey(): ApiKey | undefined {
+    // console.log(`#VAFR Searching for next available key in group: ${this.id}`);
+    // // log apiKeys for debugging
+    // console.log(`#K13K Current keys in group ${this.id}:`, this.apiKeys);
     if (this.apiKeys.length === 0) {
       return undefined;
     }
@@ -45,18 +48,27 @@ class ApiKeyGroup {
 }
 
 class ApiKeysManager {
+  private static instance: ApiKeysManager;
   public curentGroupId: string | null = null;
   private apiKeyGroups: Map<string, ApiKeyGroup>;
 
-  constructor() {
+  private constructor() {
     this.apiKeyGroups = new Map();
   }
 
-  public async loadKeysFromDb(): Promise<void> {
-    const activeGroupId = await dbService.getSetting('active_key_group_id') || 'default';
+  public static getInstance(): ApiKeysManager {
+    if (!ApiKeysManager.instance) {
+      ApiKeysManager.instance = new ApiKeysManager();
+    }
+    return ApiKeysManager.instance;
+  }
+
+  public async reloadKeys(): Promise<void> {
+    const activeGroupId = await dbService.getSetting('active_group_id') || 'default';
     this.curentGroupId = activeGroupId;
 
-    const keysFromDb: ApiKeyRecord[] = await dbService.getKeysByGroup(activeGroupId);
+    const keysFromDb: ApiKeyRecord[] = await dbService.getKeysByGroupId(activeGroupId);
+    // console.log(`#9SQD Loading keys for group: ${activeGroupId}`, keysFromDb);
 
     this.apiKeyGroups.clear();
 
@@ -65,6 +77,7 @@ class ApiKeysManager {
 
     keysFromDb.forEach(item => {
       if (item.is_enabled) {
+        // console.log(`#TSVT Adding key: ${item.id} to group: ${activeGroupId}`);
         const apiKey = new ApiKey(item.id, item.api_key, item.rpd || 1000);
         group.addApiKey(apiKey);
       }

@@ -29,5 +29,5 @@ yarn-error.log*
 *.log
 *.tmp
 
-data/
-data/gemini-router.sqlite
+# Ignore data directory
+/data/

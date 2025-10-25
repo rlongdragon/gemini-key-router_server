@@ -1,1 +1,40 @@
 @import "tailwindcss";
+
+@theme {
+  --animate-fade-in: fade-in 0.5s ease-in-out;
+
+  @keyframes fade-in {
+    0% {
+      opacity: 0;
+    }
+
+    100% {
+      opacity: 1;
+    }
+  }
+}
+
+
+@theme {
+  /*
+   * 1. 定義您的動畫效果
+   *    格式為：[動畫名稱] [持續時間] [時間函數] [延遲] [迭代次數] [方向] [填充模式] [播放狀態]
+   *    您可以參考 MDN 的 animation 文件：https://developer.mozilla.org/en-US/docs/Web/CSS/animation
+   */
+  --animate-fade-in-up: fade-in-up 0.6s ease-out;
+
+  /*
+   * 2. 定義動畫的 @keyframes
+   */
+  @keyframes fade-in-up {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}

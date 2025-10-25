@@ -1,9 +1,12 @@
+
 import { Request } from 'express';
 import { randomUUID } from 'crypto';
 import ApiKeysManager from "./ApiKeysManager";
 import { dbService } from '../services/DatabaseService';
-import { keyStatusService } from '../services/KeyStatusService';
 import { UsageRecord } from '../types/database';
+import { broadcastSseEvent } from '../api/controllers/sse.controller';
+import { statsService } from '../api/services/stats.service';
+import { LanguageModelUsage } from 'ai';
 
 export default class ProxyManager {
   private apiKeys: ApiKeysManager;
@@ -13,8 +16,8 @@ export default class ProxyManager {
   }
 
   public static async createInstance(): Promise<ProxyManager> {
-    const apiKeysManager = new ApiKeysManager();
-    await apiKeysManager.loadKeysFromDb();
+    const apiKeysManager = ApiKeysManager.getInstance();
+    await apiKeysManager.reloadKeys();
     return new ProxyManager(apiKeysManager);
   }
 
@@ -35,58 +38,84 @@ export default class ProxyManager {
       throw new Error('No available API keys in the active group.');
     }
 
-    keyStatusService.updateKeyStatus(apiKey.id, 'pending');
+    broadcastSseEvent('key_usage_start', { keyId: apiKey.id });
 
     try {
       const result = await apiKey.sendRequest(modelId, req.body, isStreaming);
-      const latency = Date.now() - startTime;
-      
-      const { promptTokenCount, candidatesTokenCount, totalTokenCount } = result.response.usageMetadata || { promptTokenCount: null, candidatesTokenCount: null, totalTokenCount: null };
 
-      keyStatusService.updateKeyStatus(apiKey.id, 'available');
-      const record = {
-        requestId,
-        apiKeyId: apiKey.id,
-        keyGroupId: groupId,
-        clientIdentifier: req.ip,
-        modelId,
-        status: 'success',
-        latency,
-        promptTokens: promptTokenCount,
-        completionTokens: candidatesTokenCount,
-        totalTokens: totalTokenCount,
-        estimatedCost: 0, // Placeholder
-        timestamp: new Date(startTime).toISOString(),
-        errorCode: null,
-        errorMessage: null,
-      };
-      await dbService.addUsageRecord(record as any);
+      if (isStreaming) {
+        result.usage
+          .then(async (usage: LanguageModelUsage) => {
+            const record: UsageRecord = {
+              requestId,
+              apiKeyId: apiKey.id,
+              keyGroupId: groupId,
+              clientIdentifier: req.ip || null,
+              modelId,
+              status: "success",
+              latency: Date.now() - startTime,
+              promptTokens: usage.inputTokens ?? null,
+              completionTokens: usage.outputTokens ?? null,
+              totalTokens: usage.totalTokens ?? null,
+              estimatedCost: 0, // Placeholder
+              timestamp: new Date().toISOString(),
+              errorCode: null,
+              errorMessage: null,
+            };
+            await dbService.addUsageRecord(record);
+            broadcastSseEvent('key_usage_end', record);
+            await statsService.broadcastStatsUpdate();
+          })
+          .catch((error: any) => {
+            console.error(
+              `[${requestId}] Failed to record usage for streaming request:`,
+              error
+            );
+          });
+      } else {
+        const usage = result.usage as LanguageModelUsage;
+        const record: UsageRecord = {
+          requestId,
+          apiKeyId: apiKey.id,
+          keyGroupId: groupId,
+          clientIdentifier: req.ip || null,
+          modelId,
+          status: "success",
+          latency: Date.now() - startTime,
+          promptTokens: usage.inputTokens ?? null,
+          completionTokens: usage.outputTokens ?? null,
+          totalTokens: usage.totalTokens ?? null,
+          estimatedCost: 0, // Placeholder
+          timestamp: new Date().toISOString(),
+          errorCode: null,
+          errorMessage: null,
+        };
+        await dbService.addUsageRecord(record);
+        broadcastSseEvent('key_usage_end', record);
+        await statsService.broadcastStatsUpdate();
+      }
 
       return result;
     } catch (error: any) {
-      if (error.statusCode === 429) {
-        keyStatusService.updateKeyStatus(apiKey.id, 'exhausted');
-      } else {
-        keyStatusService.updateKeyStatus(apiKey.id, 'available');
-      }
-      const latency = Date.now() - startTime;
-      const record = {
+      const record: UsageRecord = {
         requestId,
         apiKeyId: apiKey.id,
         keyGroupId: groupId,
-        clientIdentifier: req.ip,
+        clientIdentifier: req.ip || null,
         modelId,
-        status: 'failure',
-        latency,
+        status: "failure",
+        latency: Date.now() - startTime,
         promptTokens: null,
         completionTokens: null,
         totalTokens: null,
         estimatedCost: 0,
-        timestamp: new Date(startTime).toISOString(),
-        errorCode: error.statusCode || null,
-        errorMessage: error.message || 'An unknown error occurred',
+        timestamp: new Date().toISOString(),
+        errorCode: String(error.statusCode) || null,
+        errorMessage: error.message || "An unknown error occurred",
       };
-      await dbService.addUsageRecord(record as any);
+      await dbService.addUsageRecord(record);
+      broadcastSseEvent('key_usage_end', record);
+      await statsService.broadcastStatsUpdate();
       throw error;
     }
   }

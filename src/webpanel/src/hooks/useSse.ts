@@ -1,24 +1,23 @@
 import { useState, useEffect } from 'react';
+import { useToast } from '../components/Toast/useToast';
 
-export function useSse<T>(url: string) {
-  const [data, setData] = useState<T | null>(null);
+export function useSse(url: string): EventSource | null {
+  const [eventSource, setEventSource] = useState<EventSource | null>(null);
+  const { showToast } = useToast();
 
   useEffect(() => {
-    const eventSource = new EventSource(url);
+    const source = new EventSource(url);
+    setEventSource(source);
 
-    eventSource.onmessage = (event) => {
-      const parsedData = JSON.parse(event.data);
-      setData(parsedData);
-    };
 
-    eventSource.onerror = () => {
-      eventSource.close();
+    source.onerror = () => {
+      source.close();
     };
 
     return () => {
-      eventSource.close();
+      source.close();
     };
-  }, [url]);
+  }, [url, showToast]);
 
-  return data;
+  return eventSource;
 }

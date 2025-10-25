@@ -1,11 +1,23 @@
 import { NextFunction, Request, Response } from 'express';
 import { keyManagementService } from '../services/key-management.service';
+import { dbService } from '../../services/DatabaseService';
+import ApiKeysManager from '../../class/ApiKeysManager';
 
 export class KeyController {
   static async getKeys(req: Request, res: Response, next: NextFunction) {
     try {
-      const keys = await keyManagementService.getKeys();
-      res.json(keys);
+      const activeGroup = dbService.getActiveGroup();
+      if (!activeGroup) {
+        return res.json([]);
+      }
+      const keys = dbService.getKeysByGroupId(activeGroup.id);
+      const maskedKeys = keys.map((key) => ({
+        ...key,
+        api_key: `${key.api_key.substring(0, 4)}...${key.api_key.substring(
+          key.api_key.length - 4,
+        )}`,
+      }));
+      res.json(maskedKeys);
     } catch (error) {
       next(error);
     }
@@ -13,11 +25,14 @@ export class KeyController {
 
   static async createKey(req: Request, res: Response, next: NextFunction) {
     try {
-      const { name, api_key, group_id, rpd, is_enabled } = req.body;
+      console.log("#4170 Creating key with body:", req.body); // Debugging log
+      const { name, api_key, group_id, rpd, is_enabled } = {rpd:500, ... (req.body)};
+      
       if (!api_key || !group_id) {
         return res.status(400).json({ message: 'api_key and group_id are required' });
       }
       await keyManagementService.createKey({ name, api_key, group_id, rpd, is_enabled });
+      await ApiKeysManager.getInstance().reloadKeys();
       res.status(201).json({ message: 'Key created successfully' });
     } catch (error) {
       next(error);
@@ -27,8 +42,9 @@ export class KeyController {
   static async updateKey(req: Request, res: Response, next: NextFunction) {
     try {
       const { keyId } = req.params;
-      const { name, api_key, group_id, rpd, is_enabled } = req.body;
-      await keyManagementService.updateKey(keyId, { name, api_key, group_id, rpd, is_enabled });
+      const updateData = req.body;
+      await keyManagementService.updateKey(keyId, updateData);
+      await ApiKeysManager.getInstance().reloadKeys();
       res.json({ message: 'Key updated successfully' });
     } catch (error) {
       next(error);
@@ -39,9 +55,43 @@ export class KeyController {
     try {
       const { keyId } = req.params;
       await keyManagementService.deleteKey(keyId);
+      await ApiKeysManager.getInstance().reloadKeys();
       res.json({ message: 'Key deleted successfully' });
     } catch (error) {
       next(error);
+    }
+  }
+
+  static async getKeyIds(req: Request, res: Response, next: NextFunction) {
+    try {
+      const keyIds = await keyManagementService.getKeyIds();
+      res.json(keyIds);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getKeyById(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { keyId } = req.params;
+      const key = await keyManagementService.getKeyById(keyId);
+      if (!key) {
+        return res.status(404).json({ message: 'Key not found' });
+      }
+      res.json(key);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  public static async getKeysByGroupId(req: Request, res: Response): Promise<void> {
+    try {
+      console.log(`#3AVJ Fetching keys for group: ${req.params.groupId}`); // Debugging log
+      const { groupId } = req.params;
+      const keys = await keyManagementService.getKeysByGroupId(groupId);
+      res.status(200).json(keys);
+    } catch (error) {
+      res.status(500).json({ message: 'Error fetching keys for the group', error });
     }
   }
 }

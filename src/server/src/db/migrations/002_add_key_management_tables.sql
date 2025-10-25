@@ -24,6 +24,6 @@ CREATE TABLE system_settings (
 );
 
 -- 插入預設的啟用中金鑰組設定
-INSERT INTO system_settings (key, value) VALUES ('active_key_group_id', 'default');
+INSERT INTO system_settings (key, value) VALUES ('active_group_id', 'default');
 -- 插入一個預設的分組
 INSERT INTO key_groups (id, name) VALUES ('default', 'Default Group');

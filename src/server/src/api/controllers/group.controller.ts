@@ -1,11 +1,26 @@
 import { NextFunction, Request, Response } from 'express';
+import { broadcastSseEvent } from './sse.controller';
 import { groupManagementService } from '../services/group-management.service';
+import ApiKeysManager from '../../class/ApiKeysManager';
 
 export class GroupController {
-  static async getGroups(req: Request, res: Response, next: NextFunction) {
+  static async getAllGroups(req: Request, res: Response, next: NextFunction) {
     try {
-      const groups = await groupManagementService.getGroups();
+      const groups = await groupManagementService.getAllGroups();
       res.json(groups);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getActiveGroup(req: Request, res: Response, next: NextFunction) {
+    try {
+      const group = await groupManagementService.getActiveGroup();
+      if (group) {
+        res.json(group);
+      } else {
+        res.status(404).json({ message: 'No active group found' });
+      }
     } catch (error) {
       next(error);
     }
@@ -14,11 +29,23 @@ export class GroupController {
   static async createGroup(req: Request, res: Response, next: NextFunction) {
     try {
       const { name } = req.body;
-      if (!name) {
-        return res.status(400).json({ message: 'name is required' });
+      const newGroup = await groupManagementService.createGroup({ name });
+      res.status(201).json(newGroup);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async setActiveGroup(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { groupId } = req.body;
+      if (!groupId) {
+        return res.status(400).json({ message: 'Group ID is required.' });
       }
-      await groupManagementService.createGroup({ name });
-      res.status(201).json({ message: 'Group created successfully' });
+      await groupManagementService.setActiveGroup(groupId);
+      ApiKeysManager.getInstance().reloadKeys();
+      broadcastSseEvent('active_group_changed', { groupId });
+      res.status(200).json({ message: 'Active group updated successfully.' });
     } catch (error) {
       next(error);
     }
