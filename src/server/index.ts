@@ -59,6 +59,35 @@ async function startServer() {
   app.listen(port, () => {
     console.log(`代理伺服器正在 http://localhost:${port} 上運行`);
   });
+
+
+  // if have ../webpanel folder, serve it as static files
+  const path = require('path');
+  const fs = require('fs');
+  const webpanelPath = path.join(__dirname, "..", "webpanel");
+  console.log("Checking for webpanel at:", webpanelPath);
+  if (fs.existsSync(webpanelPath)) {
+    app.use(express.static(webpanelPath));
+    const indexFile = path.join(webpanelPath, "index.html");
+    const managementFile = path.join(webpanelPath, "management.html");
+
+    app.get("/", (req: Request, res: Response) => {
+      if (fs.existsSync(indexFile)) {
+        res.sendFile(indexFile);
+      } else {
+        res.status(404).send("index.html not found");
+      }
+    });
+
+    app.get("/management", (req: Request, res: Response) => {
+      if (fs.existsSync(managementFile)) {
+        res.sendFile(managementFile);
+      } else {
+        res.status(404).send("management.html not found");
+      }
+    });
+    console.log('Web panel is being served from /webpanel');
+  }
 }
 
 startServer().catch(error => {

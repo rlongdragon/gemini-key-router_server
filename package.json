@@ -12,11 +12,12 @@
     "react-router-dom": "^7.8.2"
   },
   "scripts": {
-    "start": "node dist/server/index.js",
+    "start": "npm run start:server",
+    "start:server": "node dist/server/index.js",
     "build": "npm run build:server && npm run build:webpanel",
     "build:server": "tsc -p src/server/tsconfig.json && npm run copy-assets",
     "copy-assets": "copyfiles -u 2 src/server/**/*.json src/server/**/*.sql dist/server",
-    "build:webpanel": "vite build src/webpanel --outDir dist/webpanel --config src/webpanel/vite.config.ts",
+    "build:webpanel": "vite build src/webpanel --outDir ./../../dist/webpanel --config src/webpanel/vite.config.ts",
     "dev": "concurrently \"npm:dev:server\" \"npm:dev:webpanel\"",
     "dev:server": "nodemon --watch 'src/server/**/*.ts' --exec ts-node src/server/index.ts",
     "dev:webpanel": "vite src/webpanel --config src/webpanel/vite.config.ts",
