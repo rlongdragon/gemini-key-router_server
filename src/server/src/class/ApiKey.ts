@@ -112,7 +112,7 @@ class ApiKey {
   ): Promise<any> {
     const google = createGoogleGenerativeAI({
       baseURL:
-        "https://gateway.ai.cloudflare.com/v1/e5aa285c2cc29ab2691748c213fe09ee/test/google-ai-studio/v1beta",
+        process.env.GOOGLE_API_BASE_URL || "https://generativelanguage.googleapis.com/v1beta",
       apiKey: this.key,
     });
 
